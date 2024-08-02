@@ -1,0 +1,21 @@
+(include_subdirs unqualified)
+
+(library
+ (name evocrypt)
+ (public_name evocrypt)
+ (modules Evocrypt
+          FieldPolynomial
+          ACircuit ArithmeticCircuit 
+          ACommitment CRPRFCommitment CRPRF
+            SHA3Commitment 
+          EcCore EcCyclicGroup EcList EcOption EcPrimeField 
+          ASecretSharing Shamir
+          AGate AMPCProtocol AdditionGate MultiplicationGate SMultiplicationGate ArithmeticProtocol WeakPrivacyComposition
+            BGWProtocol BGWAddition BGWMultiplication BGWSMultiplication BGWRefresh BGWWeak
+          AZKProtocol ASigmaProtocol
+            MitH ShamirBGWSha3MitH
+            LPZK
+          Random)
+ (libraries zarith cryptokit domainslib)
+ (flags
+  (:standard -w -26-27-32-33-34-39)))
