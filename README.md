@@ -63,7 +63,7 @@ builds and install the EVOCrypt library (under root module named `EVOCrypt`) ass
 EVOCrypt can also be installed via `opam`, by running
 
 ```
-$> opam install evocrypt
+$> opam pin git+https://github.com/SRI-CSL/evocrypt.git#main
 ```
 
 which installs EVOCrypt and its dependencies via `opam`.
