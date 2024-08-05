@@ -18,4 +18,4 @@
           Random)
  (libraries zarith cryptokit domainslib)
  (flags
-  (:standard -w -26-27-32-33-34-39)))
+  (:standard -w -26-27-32-33-34-39-67)))

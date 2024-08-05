@@ -43,8 +43,6 @@ val interpolate : Z.t -> (Z.t * Z.t) list -> Z.t
 
 val update : monomial list -> Z.t -> Z.t -> monomial list
     
-val dpolynomial : Z.t -> monomial list
-
 val monomial_to_string : monomial -> string
 
 val polynomial_to_string : monomial list -> string

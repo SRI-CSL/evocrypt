@@ -25,5 +25,3 @@ let fsub : t -> t -> t = fun a b -> sub_mod a b !q
 let fmul : t -> t -> t = fun a b -> mul_mod a b !q
 let fdiv : t -> t -> t = fun a b -> div_mod a b !q
 let fexp : t -> t -> t = fun a e -> exp_mod a e !q
-
-let dt : unit -> Z.t = fun _ -> Z.rem (Z.of_bits (Cryptokit.Random.string Cryptokit.Random.secure_rng 128)) !q
