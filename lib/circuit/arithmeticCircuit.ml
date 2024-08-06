@@ -28,6 +28,15 @@ module ArithmeticGates = struct
       | Multiplication _ -> false
       | SMultiplication _ -> false
 
+  let is_sinput (g : gates_t) : bool = 
+    match g with
+      | PInput _ -> false
+      | SInput _ -> true
+      | Constant _ -> false
+      | Addition _ -> false
+      | Multiplication _ -> false
+      | SMultiplication _ -> false
+
   let is_constant (g : gates_t) : bool = 
     match g with
       | PInput _ -> false

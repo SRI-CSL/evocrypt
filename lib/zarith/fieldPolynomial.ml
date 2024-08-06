@@ -131,16 +131,6 @@ let rec update (p : monomial list) (e : Z.t) (x : t) : monomial list =
      else Cons (m, update ms e x)
   end
 
-let rec dpolynomial' (i : Z.t) (d : Z.t) (p : monomial list) : monomial list =
-  if Z.gt i d then p
-  else
-    let coef = dt () in
-    if coef = Z.zero then dpolynomial' i d p
-    else dpolynomial' (Z.add i Z.one) d (Cons ({ coef = coef ; expo = i}, p))
-    
-let dpolynomial : Z.t -> monomial list =
-  fun n -> dpolynomial' Z.zero n Nil
-
 let monomial_to_string m = Z.to_string m.coef ^ "x^" ^ Z.to_string m.expo
 
 let rec polynomial_to_string p =

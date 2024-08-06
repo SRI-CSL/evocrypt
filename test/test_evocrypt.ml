@@ -84,11 +84,6 @@ end
 
 module Shamir5 = Shamir (PC5)
 
-let rec shares_to_string = function
-  | Nil -> ""
-  | Cons(x, Nil) -> let (pid, s) = x in Z.to_string pid ^ " -> " ^ Z.to_string s
-  | Cons(x, xs) -> let (pid, s) = x in Z.to_string pid ^ " -> " ^ Z.to_string s ^ "\n" ^ shares_to_string xs
-
 let _ = 
   EcPrimeField.q := Z.of_string "11" ;
   let p = Cons({ coef = Z.of_string "5" ; expo = Z.of_string "1"}, Cons({ coef = Z.of_string "7"; expo = Z.zero}, Nil)) in
@@ -123,18 +118,6 @@ module BGW5Data = ArithmeticProtocolData (ShamirData (PC5)) (BGWAdditionData (PC
 module BGW5 = BGWProtocol(PC5)
 module ListShamir5 = ListSecretSharing((ShamirData (PC5)))
 
-let rec random_generator_gates (g : ArithmeticGates.gates_t) t =
-  match g with
-  | PInput _ -> Nil
-  | SInput _ -> Nil
-  | Constant _ -> Nil
-  | Addition (gid, wl, wr) -> 
-     concat (concat (random_generator_gates wl t) (Cons ((gid, BGW5Data.AdditionRand ()), Nil))) (random_generator_gates wr t)
-  | Multiplication (gid, wl, wr) -> 
-     concat (concat (random_generator_gates wl t) (Cons ((gid, BGW5Data.MultiplicationRand (dpolynomial t)), Nil))) (random_generator_gates wr t)
-  | SMultiplication (gid, wl, wr) -> 
-     concat (concat (random_generator_gates wl t) (Cons ((gid, BGW5Data.SMultiplicationRand ()), Nil))) (random_generator_gates wr t)
-
 let _ = 
   EcPrimeField.q := Z.of_string "17" ;
   let xs = Cons(Z.of_string "3", Cons(Z.of_string "4", Nil)) in
@@ -145,7 +128,8 @@ let _ =
   let ss = ListShamir5.share r_ss xs in
 
   let x_mpc = map (fun pid -> (pid, (xp, pad_witness (Z.of_string "2") (oget (assoc ss pid))))) PC5.pid_set in
-  let r_mpc = map (fun pid -> (pid, (random_generator_gates default_gates PC5.t, dpolynomial PC5.t))) PC5.pid_set in
+  let module BGWR = Evocrypt.Random.BGW(PC5) in
+  let r_mpc = BGWR.bgw_random_generator default_gates in
 
   let answer = Shamir5.reconstruct (snd (BGW5.protocol default_circuit r_mpc x_mpc)) in
   test "BGW test" answer (Z.of_string "7") 
@@ -157,27 +141,21 @@ open ZK.ShamirBGWSha3MitH
 
 module ShamirBGW5Sha3MitH = ShamirBGWSha3MitHData (PC5)
 
-let rec share_random_generator i n =
-  if Z.equal i n then Nil
-  else
-    let r = dpolynomial PC5.t in
-    Cons (r, share_random_generator (Z.add i Z.one) n)
-
 let _ = 
   EcPrimeField.q := Z.of_string "17" ;
   let witness = Cons(Z.of_string "3", Cons(Z.of_string "4", Nil)) in
   let instance = Cons(Z.of_string "1", Cons(Z.of_string "0", Nil)) in
   let witness = pad_witness (Z.of_string "2") witness in
 
-  let r_ss = share_random_generator (Z.zero) (Z.of_string "2") in
-  let r_mpc = map (fun pid -> (pid, (random_generator_gates default_gates PC5.t, dpolynomial PC5.t))) PC5.pid_set in
-  let r_cs = map (fun pid -> (pid, ())) PC5.pid_set in
+  let module MITHBGWR = Evocrypt.Random.MITHBGW(PC5) in
+  let prover_rand = MITHBGWR.generate_prover_randomness default_gates (Z.of_string "4") in
+  let verifier_rand = MITHBGWR.generate_verifier_randomness () in
 
   let module RELC = struct let relc = default_circuit end in
   let module ShamirBGW5Sha3MitH = ShamirBGW5Sha3MitH (RELC) in
 
-  let (ps, cs) = ShamirBGW5Sha3MitH.commitment (r_ss, r_mpc, r_cs) (witness, instance) in
-  let (vs, chl) = ShamirBGW5Sha3MitH.challenge (p1, p2) instance cs in
+  let (ps, cs) = ShamirBGW5Sha3MitH.commitment prover_rand (witness, instance) in
+  let (vs, chl) = ShamirBGW5Sha3MitH.challenge verifier_rand instance cs in
   let resp = ShamirBGW5Sha3MitH.response ps chl in
   let answer = ShamirBGW5Sha3MitH.check vs resp in
   test "BGW-MITH test" answer true
