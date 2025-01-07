@@ -2,10 +2,11 @@
   Finite field formalization. This file defines elements of a finite field estalished by the
   prime order **q**, and defines all operations as done modulo **q**.
 *)
-require import Int IntDiv.
+require import Int IntDiv AllCore.
 
 (** The order of field is a prime **q** *)
 op q: int.
+
 (** Establishes that the prime **q** is bigger than two *)
 axiom q_pos:  Int.(<) 2 q.
 
@@ -332,7 +333,7 @@ lemma nosmt ofint1_: ofint 1 = fone by smt.
 *)
 theory FDistr.
 
-  require Distr.
+  require import Distr Dexcepted.
 
   require import Real.
 
@@ -346,6 +347,8 @@ theory FDistr.
   axiom dt1E: forall (s:t), Distr.mu1 dt s = (1%r/q%r)%Real.
 
   axiom dt2E: forall (a b c :t), mu dt (fun x => fadd (fadd (fmul (fexp x 2) a) (fmul x b)) c = fzero) = (2%r/q%r)%Real.
+
+  axiom dt2E0: forall (a b c :t), mu (dt \ (=) fzero) (fun x => fadd (fadd (fmul (fexp x 2) a) (fmul x b)) c = fzero) = (2%r/(q%r - 1%r))%Real.
 
   (** The field probability distribution is defined for all values of the field *)
   axiom dt_ll: Distr.is_lossless dt.

@@ -155,6 +155,7 @@ theory LPZK.
     let (c, inst) = x in
     let gg = c.`gates in
     size y = size rp /\
+    alpha <> fzero /\
     (forall k, 0 <= k < size y => 
       (nth def_yi y k).`v = fadd (fmul alpha (nth def_ui rp k).`a) (nth def_ui rp k).`b) /\
     (forall k, 0 <= k < size y => 
@@ -556,23 +557,23 @@ progress.
 move : H0 H1 H2.
 elim gg => //=.
 move => wid; progress.
-rewrite H7.
+rewrite H8.
 smt().
 ringeq.
 
 move => wid; progress.
-rewrite H7.
+rewrite H8.
 smt().
 ringeq.
 
 move => gid; progress.
-rewrite H7.
+rewrite H8.
 smt().
 ringeq.
 
 move => gid wl wr; progress.
 rewrite /get_e //=.
-rewrite H7.
+rewrite H8.
 smt().
 ringeq.
 
@@ -582,7 +583,7 @@ rewrite H21 //=.
 ringeq.*)
 
 move => gid wl wr; progress.
-rewrite H7 //=.
+rewrite H8 //=.
 smt().
 ringeq.
 qed.
@@ -620,9 +621,9 @@ smt().
 smt().
 smt().
 done.
-rewrite H5.
+rewrite H6.
 smt().
-rewrite H6 //=.
+rewrite H7 //=.
 smt().
 ringeq.
 smt().
@@ -745,9 +746,10 @@ have ->: fsub
       (nth def_ui rp (topo.`npinputs + topo.`nsinputs + topo.`ngates + 1)).`b').
 rewrite !H15 //=.
 smt().
-rewrite !H14 //=.
 smt().
+rewrite !H16 //=.
 smt().
+
 (*smt.
 rewrite H15 //= 1:/#.
 print get_fi_exec.*)
@@ -785,7 +787,7 @@ move : H4 H6 H5; elim gg => //=.
     move => wid => />; progress.
     rewrite /eval_circuit /get_e /get_a /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 1:/#.
+    rewrite H15 1:/#.
     case (nth fzero inst wid = fzero); progress.
       rewrite H6 mulf0.
       by have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
@@ -797,7 +799,7 @@ move : H4 H6 H5; elim gg => //=.
     move => wid => />; progress.
     rewrite /eval_circuit /get_e /get_a /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 1:/#.
+    rewrite H15 1:/#.
     case (nth fzero w wid = fzero); progress.
       rewrite H6 mulf0.
       by have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
@@ -809,7 +811,7 @@ move : H4 H6 H5; elim gg => //=.
     move => gid c => />; progress.
     rewrite /eval_circuit /get_e /get_a /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 1:/#.
+    rewrite H15 1:/#.
     case (c = fzero); progress.
       rewrite mulf0.
       by have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
@@ -820,13 +822,13 @@ move : H4 H6 H5; elim gg => //=.
     (* Addition gate *)
     move => gid l r; rewrite /eval_circuit /get_e /get_a /=; progress.  
     rewrite /eval_circuit /get_e /get_a /=; progress. 
-    move : H4; rewrite H6 H25 H27; progress.
-    move : H5; rewrite H16 H26 H28; progress.
+    move : H4; rewrite H6 H26 H28; progress.
+    move : H5; rewrite H17 H27 H29; progress.
     rewrite /get_e /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 //= 1:/#.
+    rewrite H15 //= 1:/#.
     case (fadd (eval_gates l inst w) (eval_gates r inst w) = fzero); progress.
-      rewrite H29 mulf0.
+      rewrite H30 mulf0.
       have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
       by smt(@PrimeField).
       rewrite mul1f.
@@ -836,13 +838,13 @@ move : H4 H6 H5; elim gg => //=.
     (* Multiplication gate *)
     move => gid l r; rewrite /eval_circuit /get_e /get_a /=; progress.  
     rewrite /eval_circuit /get_e /get_a /=; progress. 
-    move : H4; rewrite H6 H25 H27; progress.
-    move : H5; rewrite H16 H26 H28; progress.
+    move : H4; rewrite H6 H26 H28; progress.
+    move : H5; rewrite H17 H27 H29; progress.
     rewrite /get_e /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 //= 1:/#.
+    rewrite H15 //= 1:/#.
     case (fmul (eval_gates l inst w) (eval_gates r inst w) = fzero); progress.
-      rewrite H29 mulf0.
+      rewrite H30 mulf0.
       have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
       by smt(@PrimeField).
       rewrite mul1f.
@@ -894,7 +896,7 @@ qed.
       proc gen(rp : prover_rand_t) : verifier_rand_t = {
         var alpha, y;
 
-        alpha <$ FDistr.dt;
+        alpha <$ (FDistr.dt \ ((=)fzero));
         y <- map (fun u => {| v = fadd (fmul alpha u.`a) u.`b ; v' = fadd (fmul alpha u.`a') u.`b' |}) rp;
 
         return ({| alpha = alpha; y = y |});
@@ -977,7 +979,7 @@ lemma leq_transitivity_real (a b c : real):
   a <= b => b <= c => a <= c by smt(@Real).
 
     lemma soundness &m (x_ : statement_t) rp_ :
-                                 Pr [ Soundness(RV, MP).main(rp_, x_) @ &m : res ] <= 2%r / q%r.
+                                 Pr [ Soundness(RV, MP).main(rp_, x_) @ &m : res ] <= 2%r / (q%r - 1%r).
     proof.
       progress; byphoare (_ : rp = rp_ /\ x = x_ ==> res) => //=.
       proc; inline*.
@@ -986,6 +988,7 @@ lemma leq_transitivity_real (a b c : real):
           rewrite /valid_rand_verifier //=.
           elim (x{hr}) => circ inst //=; progress.
           by simplify; rewrite size_map //=.
+          by smt.
           by rewrite (nth_map def_ui def_yi); first by move : H1; rewrite size_map.
           by rewrite (nth_map def_ui def_yi); first by move : H1; rewrite size_map.
       wp; rnd; wp; simplify; call (_ : true); skip; progress.
@@ -1044,7 +1047,7 @@ have ->: (fun (x0 : t) =>
      fmul n x0).
 rewrite fun_ext /(==); progress.
 smt().
-have : mu FDistr.dt
+have : mu (FDistr.dt \ (=) fzero)
   (fun (x0 : t) =>
      batch_check
        (gen_f
@@ -1061,7 +1064,7 @@ have : mu FDistr.dt
                     {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
                         fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z)).`e =
      fmul n x0) <= 
-mu FDistr.dt
+mu (FDistr.dt \ (=) fzero)
   (fun (x0 : t) =>
      batch_check
        (gen_f
@@ -1072,7 +1075,7 @@ mu FDistr.dt
                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0).
 rewrite mu_and_leq.
 progress.
-have : mu FDistr.dt
+have : mu (FDistr.dt \ (=) fzero)
       (fun (x0 : t) =>
          batch_check
            (gen_f
@@ -1080,7 +1083,7 @@ have : mu FDistr.dt
                   map
                     (fun (u : ui_t) =>
                        {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0) <= 2%r / q%r.
+                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0) <= 2%r / (q%r - 1%r).
 clear H8.
 have : exists gid_final_mul zi_final_mul zl zr, z = MultiplicationZ gid_final_mul zi_final_mul zl zr.
 move : H1.
@@ -1104,7 +1107,7 @@ simplify.
 progress.
 rewrite /get_e //=.
 
-have : mu FDistr.dt
+have : mu (FDistr.dt \ (=) fzero)
   (fun (x0 : t) =>
      fsub
        (fsub
@@ -1146,7 +1149,7 @@ have : mu FDistr.dt
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr) zr x0) <=
-mu FDistr.dt
+mu (FDistr.dt \ (=) fzero)
   (fun (x0 : t) =>
      fsub
        (fsub
@@ -1183,7 +1186,7 @@ mu FDistr.dt
      fmul x0 zi_final_mul.`LPZK.c).
 rewrite mu_and_leq.
 progress.
-have : mu FDistr.dt
+have : mu (FDistr.dt \ (=) fzero)
       (fun (x0 : t) =>
          fsub
            (fsub
@@ -1218,7 +1221,7 @@ have : mu FDistr.dt
                           {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
                               fadd (fmul x0 u.`a') u.`b'; |}) rp{hr})
                     (max_wire + 1)).`v' (fmul x0 zi_final_mul.`m'))) =
-         fmul x0 zi_final_mul.`LPZK.c) = 2%r / q%r.
+         fmul x0 zi_final_mul.`LPZK.c) = 2%r / (q%r - 1%r).
 clear H1.
 
 have ->: (fun (x0 : t) =>
@@ -1330,7 +1333,7 @@ rewrite fun_ext /(==); progress.
 congr.
 by ringeq.
 
-rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
+rewrite (FDistr.dt2E0 (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
 done.
 
 case (is_sinputz zr); progress.
@@ -1374,7 +1377,7 @@ rewrite fun_ext /(==); progress.
 congr.
 by ringeq.
 
-rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
+rewrite (FDistr.dt2E0 (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
 done.
 
 case (is_constantz zr); progress.
@@ -1418,7 +1421,7 @@ rewrite fun_ext /(==); progress.
 congr.
 by ringeq.
 
-rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
+rewrite (FDistr.dt2E0 (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
 done.
 
 case (is_additionz zr); progress.
@@ -1462,7 +1465,7 @@ rewrite fun_ext /(==); progress.
 congr.
 by ringeq.
 
-rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
+rewrite (FDistr.dt2E0 (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
 done.
 
 case (is_multiplicationz zr); progress.
@@ -1506,7 +1509,7 @@ rewrite fun_ext /(==); progress.
 congr.
 by ringeq.
 
-rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
+rewrite (FDistr.dt2E0 (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub (fsub (fmul d w) i) j) (fmul o w)) (fmul r z)) t) (fmul e z)) (fsub (fsub (fadd (fadd (fadd (fmul d r) (fmul e d)) (fmul o r)) (fmul e o)) p) y)).
 done.
 
 smt().
@@ -1516,7 +1519,7 @@ move : H1.
 by rewrite H2 //=.
 
 progress.
-rewrite (leq_transitivity_real (mu FDistr.dt
+rewrite (leq_transitivity_real (mu (FDistr.dt \ (=) fzero)
   (fun (x0 : t) =>
      batch_check
        (gen_f
@@ -1532,7 +1535,7 @@ rewrite (leq_transitivity_real (mu FDistr.dt
                  (fun (u : ui_t) =>
                     {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
                         fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z)).`e =
-     fmul n x0)) (mu FDistr.dt
+     fmul n x0)) (mu (FDistr.dt \ (=) fzero)
       (fun (x0 : t) =>
          batch_check
            (gen_f
@@ -1540,7 +1543,7 @@ rewrite (leq_transitivity_real (mu FDistr.dt
                   map
                     (fun (u : ui_t) =>
                        {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0)) (2%r / q%r)).
+                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0)) (2%r / (q%r - 1%r))).
 done.
 done.
 qed.
