@@ -102,63 +102,53 @@ theory LPZK.
   (** Randomness validity predicate for the prover. We consider the prover randomness to be valid
       if it has the correct number of elements and if the last [a] element of the prover 
       randomness is different than 0 *)
-  op valid_rand_prover' (r : prover_rand_t) (gg : gates_t) : bool =
-    with gg = PInput _ => true
-    with gg = SInput _ => true
-    with gg = Constant _ _ => true
-    with gg = Addition gid wl wr => (*valid_rand_prover' r wl /\ valid_rand_prover' r wr*)
-      let gid_l = get_gid wl in
-      let gid_r = get_gid wr in
-      (nth def_ui r gid).`a = fadd (nth def_ui r gid_l).`a (nth def_ui r gid_r).`a /\
-      (nth def_ui r gid).`b = fadd (nth def_ui r gid_l).`b (nth def_ui r gid_r).`b /\
-      valid_rand_prover' r wl /\ valid_rand_prover' r wr
-    with gg = Multiplication _ wl wr => valid_rand_prover' r wl /\ valid_rand_prover' r wr.
-
   op valid_rand_prover (r : prover_rand_t) (x : statement_t) : bool =
     let (c, inst) = x in
     let topo = c.`topo in
     let gg = c.`gates in
     size r = topo.`nsinputs + topo.`npinputs + topo.`ngates + 2 /\ 
     (forall k, 0 <= k < size r => 
-      (nth def_ui r k).`a <> fzero). (*/\ valid_rand_prover' r gg.*) (*/\
-    (*(nth def_ui r (get_gid gg)).`a <> fzero /\*)
-    valid_rand_prover' r gg.
-(*    (forall k, 0 <= k < size r => 
-      is_addition (oget (get_gate gg k)) =>
-        (nth def_ui r k).`a = fadd (nth def_ui r (get_gid (as_addition (oget (get_gate gg k))).`2)).`a 
-                                   (nth def_ui r (get_gid (as_addition (oget (get_gate gg k))).`3)).`a) /\
-    (forall k, 0 <= k < size r => 
-      is_addition (oget (get_gate gg k)) =>
-        (nth def_ui r k).`a = fadd (nth def_ui r (get_gid (as_addition (oget (get_gate gg k))).`2)).`a 
-                                   (nth def_ui r (get_gid (as_addition (oget (get_gate gg k))).`3)).`a).
-*)*)
+      (nth def_ui r k).`a <> fzero).
+
   (** Verifier randomness specification *)
+  (** Correlation term *)
+  type correlation_term_t = t.
   (** The verifier will have a list composed of two field elements (v and v') per gate *)
   type yi_t = { v : t ; v' : t }.
+  (** The type of correlated randomness (list of elements of type [yi_t]) *)
+  type correlated_randomness_t = yi_t list.
+
   (** Default value for an element of the verifier randomness *)
   op def_yi : yi_t = {| v = fzero ; v' = fzero |}.
-  (** The type of lists of elements of type [yi_t] *)
-  type y_t = yi_t list.
-  (** The verifier randomness is a finite field element and a list of elements of type [yi_t] *)
-  type verifier_rand_t = { alpha : t ; y : y_t }.
 
-  (** Auxiliar verifier create the prover verifier randomness. This operator is only needed for
-      the array-based optimization *)
-  op create_verifier_rand (alpha : t) (y : yi_t list) = {| alpha = alpha ; y = y |}.
+  (** The verifier randomness is a finite field element and a list of elements of type [yi_t] *)
+  type verifier_rand_t = correlation_term_t * correlated_randomness_t.
+
+  op valid_correlation_term (alpha : correlation_term_t) : bool = alpha <> fzero.
+  op valid_correlated_randomness (y : correlated_randomness_t) (x : verifier_input_t) : bool = 
+    let (c, inst) = x in
+    let topo = c.`topo in
+    let gg = c.`gates in
+    size y = topo.`nsinputs + topo.`npinputs + topo.`ngates + 2.
 
   (** Randomness validity predicate for the verifier. We consider the verifier randomness to be 
       valid if it has the correct number of elements and if the verifier and prover randomness
       are correlated with respect to an affine function that evaluates to 𝛼 *)  
-  op valid_rand_verifier (rp : prover_rand_t) (rv : verifier_rand_t) (x : verifier_input_t) : bool =
-    let alpha = rv.`alpha in 
-    let y = rv.`y in
-    let (c, inst) = x in
-    let gg = c.`gates in
+  op valid_rand_verifier (rv : verifier_rand_t) (x : verifier_input_t) : bool =
+    valid_correlation_term rv.`1 /\ valid_correlated_randomness rv.`2 x.
+
+  op is_correlated_randomness (r : prover_rand_t * verifier_rand_t) : bool = 
+    let (rp, rv) = r in
+    let alpha = rv.`1 in
+    let y = rv.`2 in
     size y = size rp /\
     (forall k, 0 <= k < size y => 
       (nth def_yi y k).`v = fadd (fmul alpha (nth def_ui rp k).`a) (nth def_ui rp k).`b) /\
     (forall k, 0 <= k < size y => 
       (nth def_yi y k).`v' = fadd (fmul alpha (nth def_ui rp k).`a') (nth def_ui rp k).`b').
+
+  op generate_correlated_randomness (rp : prover_rand_t) (alpha : correlation_term_t) : verifier_rand_t = 
+    (alpha, map (fun x => {| v = fadd (fmul x.`a alpha) x.`b ; v' = fadd (fmul x.`a' alpha) x.`b' |}) rp).
 
   (** Prover output type. At the end of the protocol, the prover has no output *)
   type prover_output_t = unit. 
@@ -355,40 +345,40 @@ theory LPZK.
   op get_e (f : f_t) : t = (get_fi f).`e.
 
   (** Generates the [f] data structure, based on the verifier algorithm described before *)
-  op gen_f (r : verifier_rand_t) (z : z_t) =
+  op gen_f (rv : verifier_rand_t) (z : z_t) =
     with z = PInputZ wid zi => 
       let m = zi.`m in
-      let v = (nth def_yi r.`y wid).`v in
+      let v = (nth def_yi (snd rv) wid).`v in
       PInputF {| e = fadd v m ; e' = fzero ; e'' = fzero |}
 
     with z = SInputZ wid zi => 
       let m = zi.`m in
-      let v = (nth def_yi r.`y wid).`v in
+      let v = (nth def_yi (snd rv) wid).`v in
       SInputF {| e = fadd v m ; e' = fzero ; e'' = fzero |}
 
     with z = ConstantZ gid zi =>
       let m = zi.`m in
-      let v = (nth def_yi r.`y gid).`v in
+      let v = (nth def_yi (snd rv) gid).`v in
       ConstantF {| e = fadd v m ; e' = fzero ; e'' = fzero |}
 
     with z = AdditionZ gid zi zl zr =>
-      let fl = gen_f r zl in
-      let fr = gen_f r zr in
+      let fl = gen_f rv zl in
+      let fr = gen_f rv zr in
 
       let m = zi.`m in
-      let v = (nth def_yi r.`y gid).`v in
+      let v = (nth def_yi (snd rv) gid).`v in
 
-      AdditionF {| e = fadd v m (*fadd (get_e fl) (get_e fr)*) ; e' = fzero ; e'' = fzero |} fl fr
+      AdditionF {| e = fadd v m ; e' = fzero ; e'' = fzero |} fl fr
 
     with z = MultiplicationZ gid zi zl zr =>
-      let fl = gen_f r zl in
-      let fr = gen_f r zr in
+      let fl = gen_f rv zl in
+      let fr = gen_f rv zr in
 
       let m = zi.`m_mul in
       let m' = zi.`m' in
 
-      let alpha = r.`alpha in
-      let y = nth def_yi r.`y gid in
+      let alpha = fst rv in
+      let y = nth def_yi (snd rv) gid in
       let v = y.`v in
       let v' = y.`v' in
 
@@ -404,20 +394,6 @@ theory LPZK.
   (** Checks that the commitment message received was produce for a specific circuit. Essentially,
       it will check that for each gate in the circuit, there a counterpart in the commitment
       message produced by the prover *)
-  (*op valid_z_gates (z : z_t) (gg : gates_t) : bool =
-    with z = PInputZ wid _ => if is_pinput gg then as_pinput gg = wid else false
-    with z = SInputZ wid _ => if is_sinput gg then as_sinput gg = wid else false
-    with z = ConstantZ gid _ => if is_constant gg then (as_constant gg).`1 = gid else false
-    with z = AdditionZ gid _ zl zr => 
-      if is_addition gg then
-        let (gid', wl, wr) = as_addition gg in
-        gid = gid' /\ valid_z_gates zl wl /\ valid_z_gates zr wr
-      else false
-    with z = MultiplicationZ gid _ zl zr =>
-      if is_multiplication gg then
-        let (gid', wl, wr) = as_multiplication gg in
-        gid = gid' /\ valid_z_gates zl wl /\ valid_z_gates zr wr
-      else false.*)
   op valid_z_gates (z : z_t) (gg : gates_t) : bool =
     with gg = PInput wid => if is_pinputz z then (as_pinputz z).`1 = wid else false
     with gg = SInput wid => if is_sinputz z then (as_sinputz z).`1 = wid else false
@@ -464,198 +440,85 @@ theory LPZK.
         batch_check fr (as_multiplicationz z).`4 alpha
       else false.
 
-(*lemma get_fi_exec2 rv circ z rp inst :
-valid_circuit circ =>
-exists w,
-(get_fi (gen_f rv z)).`e = 
-  fadd (fmul rv.`alpha (nth def_ui rp (get_gid circ.`gates)).`a) (eval_gates circ.`gates inst w).
-proof.
-elim circ => topo gg out //=.
-rewrite /valid_circuit //=.
-rewrite /valid_gates //=.
-progress.
+  lemma get_fi_exec rp rv circ w inst :
+    valid_circuit circ =>
+    valid_rand_prover rp (circ, inst) =>
+    valid_rand_verifier rv (circ, inst) =>
+    is_correlated_randomness (rp,rv) =>
+      (get_fi (gen_f rv (gen_z rp circ.`gates inst w))).`e = 
+      fadd (fmul (fst rv) (nth def_ui rp (get_gid circ.`gates)).`a) (eval_gates circ.`gates inst w).
+  proof.
+    elim circ => topo gg out //=.
+    rewrite /valid_circuit //= /valid_rand_prover //= /valid_rand_verifier //= /valid_gates //= 
+            /valid_correlated_randomness /is_correlated_randomness //=; progress.
+    move : H0 H1 H2; elim gg => //=.
 
-move : H0 H1 H2.
-elim gg => //=.
-move => wid; progress.
-exists (mkseq (fun i => {| a = fzero ; b = fzero ; a' = fzero ; b' = fzero|}) (topo.`npinputs)).
-exists (mkseq (fun i => (get_fi (gen_f rv z)).`e) (topo.`npinputs)).
-rewrite nth_mkseq //=.
-rewrite nth_mkseq //=.
-by ringeq.
+    move => wid; progress.
+    by rewrite H9 1:/#; ringeq.
 
-move => wid; progress.
-exists (mkseq (fun i => {| a = fzero ; b = fzero ; a' = fzero ; b' = fzero|}) (topo.`npinputs + topo.`nsinputs)).
-exists (mkseq (fun i => (get_fi (gen_f rv z)).`e) (topo.`npinputs + topo.`nsinputs)).
-rewrite nth_mkseq //=.
-smt().
-rewrite nth_mkseq //=.
-smt().
-by ringeq.
+    move => wid; progress.
+    by rewrite H9 1:/#; ringeq.
 
-move => gid c; progress.
-exists (mkseq (fun i => {| a = fzero ; b = fzero ; a' = fzero ; b' = fzero|}) (topo.`npinputs + topo.`nsinputs + topo.`ngates)).
-rewrite nth_mkseq //=.
-smt().
-admit.
+    move => wid; progress.
+    by rewrite H9 1:/#; ringeq.
 
-move => gid wl wr; progress.
-exists (mkseq (fun i => {| a = fzero ; b = fzero ; a' = fzero ; b' = fzero|}) (topo.`npinputs + topo.`nsinputs + topo.`ngates)).
-exists (mkseq (fun i => fzero) (topo.`npinputs + topo.`nsinputs + topo.`ngates)).
-exists (mkseq (fun i => fzero) (topo.`npinputs + topo.`nsinputs + topo.`ngates)).
-rewrite nth_mkseq //=.
-smt().
-simplify.
-smt.
+    move => gid wl wr; progress.
+    by rewrite /get_e //= H9 1:/#; ringeq.
 
-rewrite H7.
-smt().
-ringeq.
+    move => gid wl wr; progress.
+    by rewrite /get_e //= H9 1:/#; ringeq.
+  qed.
 
-move => wid; progress.
-rewrite H7.
-smt().
-ringeq.
+  lemma batch_check_true rp rv circ w inst :
+    valid_circuit circ =>
+    valid_rand_prover rp (circ, inst) =>
+    valid_rand_verifier rv (circ, inst) =>
+    is_correlated_randomness (rp,rv) =>
+    batch_check (gen_f rv (gen_z rp circ.`gates inst w)) (gen_z rp circ.`gates inst w) (fst rv).
+  proof.
+    elim circ => topo gg out //=.
+    rewrite /valid_circuit //= /valid_rand_prover //= /valid_rand_verifier //= /valid_gates //= 
+            /valid_correlated_randomness /is_correlated_randomness //=; progress.
+    move : H0 H1 H2; elim gg => //=.
 
-move => gid; progress.
-rewrite H7.
-smt().
-ringeq.
+    move => gid l r; progress. 
+    by rewrite !H0 1,2,3:/#.
+    by rewrite !H1 1,2,3:/#.
 
-move => gid wl wr; progress.
-rewrite /get_e //=.
-rewrite H7.
-smt().
-ringeq.
-
-(*rewrite H0 //=.
-rewrite H1 //=.
-rewrite H21 //=.
-ringeq.*)
-
-move => gid wl wr; progress.
-rewrite H7 //=.
-smt().
-ringeq.
-qed.*)
-
-lemma get_fi_exec rp rv circ w inst :
-valid_circuit circ =>
-valid_rand_prover rp (circ, inst) =>
-valid_rand_verifier rp rv (circ, inst) =>
-(get_fi (gen_f rv (gen_z rp circ.`gates inst w))).`e = 
-  fadd (fmul rv.`alpha (nth def_ui rp (get_gid circ.`gates)).`a) (eval_gates circ.`gates inst w).
-proof.
-elim circ => topo gg out //=.
-rewrite /valid_circuit //=.
-rewrite /valid_rand_prover //=.
-rewrite /valid_rand_verifier //=.
-rewrite /valid_gates //=.
-progress.
-
-move : H0 H1 H2.
-elim gg => //=.
-move => wid; progress.
-rewrite H7.
-smt().
-ringeq.
-
-move => wid; progress.
-rewrite H7.
-smt().
-ringeq.
-
-move => gid; progress.
-rewrite H7.
-smt().
-ringeq.
-
-move => gid wl wr; progress.
-rewrite /get_e //=.
-rewrite H7.
-smt().
-ringeq.
-
-(*rewrite H0 //=.
-rewrite H1 //=.
-rewrite H21 //=.
-ringeq.*)
-
-move => gid wl wr; progress.
-rewrite H7 //=.
-smt().
-ringeq.
-qed.
-
-lemma batch_check_true rp rv circ w inst :
-valid_circuit circ =>
-valid_rand_prover rp ((circ, inst)) =>
-valid_rand_verifier rp rv (circ, inst) =>
-  batch_check (gen_f rv (gen_z rp circ.`gates inst w)) (gen_z rp circ.`gates inst w) rv.`alpha.
-proof.
-elim circ => topo gg out //=.
-rewrite /valid_circuit //= /valid_rand_prover //= /valid_rand_verifier //=.
-progress.
-move : H0.
-elim gg => //=.
-move => gid l r; progress.
-rewrite !H0.
-smt().
-smt().
-(*smt().*)
-
-move => gid l r; progress.
-rewrite /get_e //=.
-have ->: (get_fi (gen_f rv (gen_z rp l inst w))).`e = 
-          fadd (fmul rv.`alpha (nth def_ui rp (get_gid l)).`a) (eval_gates l inst w).
-rewrite (get_fi_exec rp rv {| topo = topo ; gates = l ; out_wires = out |} w inst).
-smt().
-rewrite /valid_rand_prover //=.
-smt().
-smt().
-have ->: (get_fi (gen_f rv (gen_z rp r inst w))).`e = 
-          fadd (fmul rv.`alpha (nth def_ui rp (get_gid r)).`a) (eval_gates r inst w).
-rewrite (get_fi_exec rp rv {| topo = topo ; gates = r ; out_wires = out |} w inst).
-smt().
-smt().
-smt().
-done.
-rewrite H5.
-smt().
-rewrite H6 //=.
-smt().
-ringeq.
-smt().
-smt().
-qed.
+    move => gid l r; progress.
+    rewrite /get_e //=.
+    have ->: (get_fi (gen_f rv (gen_z rp l inst w))).`e = 
+              fadd (fmul (fst rv) (nth def_ui rp (get_gid l)).`a) (eval_gates l inst w).
+      by rewrite (get_fi_exec rp rv {| topo = topo ; gates = l ; out_wires = out |} w inst) /#.
+    have ->: (get_fi (gen_f rv (gen_z rp r inst w))).`e = 
+              fadd (fmul (fst rv) (nth def_ui rp (get_gid r)).`a) (eval_gates r inst w).
+      by rewrite (get_fi_exec rp rv {| topo = topo ; gates = r ; out_wires = out |} w inst) /#.
+    by rewrite H9 1:/# H10 1:/# //=; ringeq.
+    by rewrite !H0 1,2,3:/#.
+    by rewrite !H1 1,2,3:/#.
+  qed.
 
   op prove (r : verifier_rand_t) (x : verifier_input_t) (c : commitment_t) : bool =
     let (z, z') = c in
     let (circ, inst) = x in
+    let (alpha, y) = r in
     if (valid_circuit circ) then
       let circ = add_final_mul circ in
       let n = z' in
       if valid_z z circ /\ n <> fzero then
         let f = gen_f r z in
-        if (batch_check f z r.`alpha) then
-          get_e f = fmul n r.`alpha
+        if batch_check f z alpha then
+          get_e f = fmul n alpha
         else false
       else false
     else false.
 
   (** Message of the protocol. For the case of DVNIZK protocols, it consists solely of the 
       commitment message *)
-  type trace_t = commitment_t.
 
  (** Protocol operation. This operation specifies an honest execution of the protocol, by
       sequentially executing the prover and the verifier, returning both outputs and message
       trace *)
-  op protocol (r : prover_rand_t * verifier_rand_t) 
-              (x : prover_input_t * verifier_input_t) : 
-              trace_t * (prover_output_t * verifier_output_t) = 
-    let (r_p, r_v) = r in let (x_p, x_v) = x in
-    let c = commit r_p x_p in
-    let b = prove r_v x_v c in (c, ((),b)).
 
   (** Instantiation of the DVNIZK protocol syntax with the concrete LPZK types and operators.
       Informally, one can see this operation as the definition of LPZK as a DVNIZK object 
@@ -663,21 +526,19 @@ qed.
   clone import DVNIZKProtocol with
     type witness_t = witness_t,
     type statement_t = statement_t,
-    type prover_input_t = prover_input_t,
-    type verifier_input_t = verifier_input_t,
-    type prover_rand_t = prover_rand_t,
-    type commitment_t = commitment_t,
-    type trace_t = trace_t,
-    type verifier_rand_t = verifier_rand_t,
-    type prover_output_t = prover_output_t,
-    type verifier_output_t = verifier_output_t,
     op relation = relation,
     op valid_inputs = valid_inputs,
-    op valid_rand_verifier = valid_rand_verifier,
+    type prover_rand_t = prover_rand_t,
+    type correlation_term_t = correlation_term_t,
+    type correlated_randomness_t = correlated_randomness_t,
     op valid_rand_prover = valid_rand_prover,
+    op valid_correlation_term = valid_correlation_term,
+    op valid_correlated_randomness = valid_correlated_randomness,
+    op is_correlated_randomness = is_correlated_randomness,
+    op generate_correlated_randomness = generate_correlated_randomness,
+    type commitment_t = commitment_t,
     op commit = commit,
-    op prove = prove,
-    op protocol = protocol
+    op prove = prove
   proof *.
 realize correct.
   (** Correctness lemma. Proves that the protocol securely evaluates the relation, i.e.:

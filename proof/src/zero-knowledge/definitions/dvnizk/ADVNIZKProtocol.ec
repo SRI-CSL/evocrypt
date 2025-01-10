@@ -48,22 +48,34 @@ theory DVNIZKProtocol.
   type prover_rand_t.
   (** Verifier randomness type. This type needs to be made concrete when the protocol is 
       instantiated *)
-  type verifier_rand_t.
-  (** Prover randomness validity predicate. Specifies what it means for an inputs to be 
+  type correlation_term_t.
+  type correlated_randomness_t.
+  type verifier_rand_t = correlation_term_t * correlated_randomness_t.
+  (** Prover randomness validity predicate. Specifies what it means for the prover randomness to be 
       well-formed *)
   op valid_rand_prover : prover_rand_t -> statement_t -> bool.
-  (** Verifier randomness validity predicate. The goal of this operator is to assure that the 
-      randomness given to the verifier is *correlated* to the randomness given to the prover, and 
-      represents an essential component of our formalization, since the two parties will only be 
-      able to correctly execute the a DVNIZK protocol if both randomness are *correlated*. 
-      Nevertheless, we do not provide a concrete specification of this predicate, since different       designated verifier protocols can have different randomness correlated assumptions. *)
-  op valid_rand_verifier : prover_rand_t -> verifier_rand_t -> verifier_input_t -> bool.
+  (** Verifier randomness validity predicate. Specifies what it means for the verifier randomness to be 
+      well-formed *)
+  op valid_correlation_term : correlation_term_t -> bool.
+  op valid_correlated_randomness : correlated_randomness_t -> verifier_input_t -> bool.
+  op valid_rand_verifier (rv : verifier_rand_t) (x : verifier_input_t) : bool =
+    valid_correlation_term rv.`1 /\ valid_correlated_randomness rv.`2 x.
   (** Randomness validity predicate. Aggregates the **valid_rand_prover** and 
       **valid_rand_verifier** predicates to specify what it means for an randomness to be 
       well-formed *)
   op valid_rands (r : prover_rand_t * verifier_rand_t) (x : statement_t) : bool =
     let (rp, rv) = r in
-    valid_rand_prover rp x /\ valid_rand_verifier rp rv x.  
+    valid_rand_prover rp x /\ valid_rand_verifier rv x. 
+
+  (** Verifier randomness validity predicate. The goal of this operator is to assure that the 
+      randomness given to the verifier is *correlated* to the randomness given to the prover, and 
+      represents an essential component of our formalization, since the two parties will only be 
+      able to correctly execute the a DVNIZK protocol if both randomness are *correlated*. 
+      Nevertheless, we do not provide a concrete specification of this predicate, since different       
+      designated verifier protocols can have different randomness correlated assumptions. *)
+  op is_correlated_randomness : (prover_rand_t * verifier_rand_t) -> bool.
+
+  op generate_correlated_randomness : prover_rand_t -> correlation_term_t -> verifier_rand_t.
 
   (** Prover output type. At the end of the protocol, the prover has no output *)
   type prover_output_t = unit. 
@@ -106,6 +118,7 @@ theory DVNIZKProtocol.
                 (x : prover_input_t * verifier_input_t) :
     valid_inputs x =>
     valid_rands r x.`1.`2 =>
+    is_correlated_randomness r =>
     snd (snd (protocol r x)) = relation (fst (fst x)) (snd x).
 
 end DVNIZKProtocol.

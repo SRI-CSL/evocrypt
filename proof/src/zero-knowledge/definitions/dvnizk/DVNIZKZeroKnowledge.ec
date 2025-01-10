@@ -41,8 +41,8 @@ theory ZeroKnowledge.
       witness and the statement, try to distinguish if the trace received came from a protocol
       execution or from a simulator *)
   module type Distinguisher_t = {
-    proc init() : prover_input_t * verifier_input_t
-    proc guess(_ : trace_t option) : bool
+    proc init() : prover_input_t * verifier_input_t * correlation_term_t
+    proc guess(_ : (verifier_rand_t * trace_t) option) : bool
   }.
 
   (** Malicious verifier type. A malicious verifier is able to produce a decision given the
@@ -54,34 +54,37 @@ theory ZeroKnowledge.
   (** Evalutator type. Modules that realize the **Evaluator_t** type must produce a protocol
       trace, given the inputs to the protocol and the appropriate prover randomness *)
   module type Evaluator_t = {
-    proc init(x : prover_input_t * verifier_input_t) : unit
-    proc eval() : trace_t option
+    proc init(x : prover_input_t * verifier_input_t * correlation_term_t) : unit
+    proc eval() : (verifier_rand_t * trace_t) option
   }.
 
   (** Simulator type. A simulator should be able to *simulate* a commitment, given only the 
       prover randomness and the statement (i.e., without knowing the witness) *)
   module type Simulator_t = {
-    proc init(x : statement_t) : unit
-    proc gen_commitment() : commitment_t option
+    proc init(x : statement_t, alpha : correlation_term_t) : unit
+    proc gen_commitment() : (verifier_rand_t * commitment_t) option
   }.
 
   (** Real evaluator module. In this module, an execution of the protocol with a dishonest
       verifier takes plance *)
   module RealEvaluator (RP : RandP_t) (MV : MVerifier_t) = {
     var xp : prover_input_t
+    var alpha : correlation_term_t
 
-    proc init(x : prover_input_t * verifier_input_t) : unit = {
+    proc init(x : prover_input_t * verifier_input_t * correlation_term_t) : unit = {
       xp <- x.`1;
+      alpha <- x.`3;
     }
-    proc eval() : trace_t option = {
-      var c, b, r, rp;
+    proc eval() : (verifier_rand_t * trace_t) option = {
+      var c, b, r, rp, rv;
 
       r <- None;
       rp <@ RP.gen(xp.`2);
       if (valid_rand_prover rp xp.`2) {
         c <- commit rp xp;
+        rv <- generate_correlated_randomness rp alpha;
         b <@ MV.prove(xp.`2, c);
-        r <- Some c;
+        r <- Some (rv, c);
       }
       return r;
     }
@@ -94,22 +97,22 @@ theory ZeroKnowledge.
     var statement : statement_t
     var xp : prover_input_t
 
-    proc init(x : prover_input_t * verifier_input_t) : unit = {
-      S.init(x.`2);
+    proc init(x : prover_input_t * verifier_input_t * correlation_term_t) : unit = {
+      S.init(x.`2, x.`3);
       yv <- relation x.`1.`1 x.`2;
       statement <- x.`2;
       xp <- x.`1;
     }
 
-    proc eval() : trace_t option = {
-      var c, b, ret, oc;
+    proc eval() : (verifier_rand_t * trace_t) option = {
+      var c, b, ret, oc, rv;
 
       ret <- None;
         oc <@ S.gen_commitment();
         if (oc <> None) {
-          c <- oget oc;
+          (rv,c) <- oget oc;
           b <@ MV.prove(statement, c);
-          ret <- Some c;
+          ret <- Some (rv, c);
         }
       return ret;
     }
@@ -118,12 +121,12 @@ theory ZeroKnowledge.
   (** Zero-knowledge cryptographic experience *)
   module ZKGame (D : Distinguisher_t) (E : Evaluator_t) = {
     proc main() : bool = {
-      var xp, xv, v, b';
+      var xp, xv, v, b', alpha;
 
-      (xp, xv) <@ D.init();
+      (xp, xv, alpha) <@ D.init();
       v <- None;
-      if (valid_inputs (xp, xv)) {
-        E.init(xp, xv);
+      if (valid_inputs (xp, xv) /\ valid_correlation_term alpha) {
+        E.init(xp, xv, alpha);
         v <@ E.eval();
       }
 
