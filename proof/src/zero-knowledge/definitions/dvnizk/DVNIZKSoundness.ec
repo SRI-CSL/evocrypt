@@ -44,9 +44,7 @@ theory Soundness.
       c <@ MP.commit(rp, x);
 
       rv <@ R.gen(rp);
-      if (valid_rand_verifier rv x) {
-        b <- !language x /\ valid_rand_prover rp x /\ prove rv x c;
-      } else { b <- false; }
+      b <- !language x /\ valid_rand_prover rp x /\ valid_rand_verifier rv x /\ prove rv x c;
 
       return b;
     }

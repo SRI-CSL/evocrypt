@@ -35,7 +35,7 @@ theory Completeness.
 
       (r_p, r_v) <@ R.gen();
 
-      if (valid_inputs ((w,x),x) /\ valid_rands (r_p, r_v) x /\ relation w x) {
+      if (valid_inputs ((w,x),x) /\ valid_rands (r_p, r_v) x /\ is_correlated_randomness (r_p, r_v) /\ relation w x) {
         (tr,y) <- protocol (r_p, r_v) ((w,x), x);
         b <- (snd y);
       }

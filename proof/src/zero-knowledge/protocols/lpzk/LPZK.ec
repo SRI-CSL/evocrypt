@@ -124,7 +124,7 @@ theory LPZK.
   (** The verifier randomness is a finite field element and a list of elements of type [yi_t] *)
   type verifier_rand_t = correlation_term_t * correlated_randomness_t.
 
-  op valid_correlation_term (alpha : correlation_term_t) : bool = alpha <> fzero.
+  op valid_correlation_term (alpha : correlation_term_t) : bool = true.
   op valid_correlated_randomness (y : correlated_randomness_t) (x : verifier_input_t) : bool = 
     let (c, inst) = x in
     let topo = c.`topo in
@@ -547,20 +547,22 @@ realize correct.
         - if the witness and statement are in the relation, then the protocol always outputs true
   *)
     rewrite /valid_inputs /valid_rands /valid_circuit /valid_topology /valid_rand_prover 
-            /valid_rand_verifier /protocol /commit /prove /relation /add_final_mul /valid_gates.
+            /valid_rand_verifier /protocol /commit /prove /relation /add_final_mul /valid_gates
+            /valid_correlation_term /valid_correlated_randomness /is_correlated_randomness.
     move => [rp] rv [xp] xv => />.
+    elim rv => alpha y => />.
     elim xp => w stp => />.
     elim xv => c inst => />.
     elim c => topo gg ys => />.
     progress.
 rewrite /valid_z //= /get_e //= /get_a //=.
 rewrite valid_z_gen //=. 
-have ->: batch_check (gen_f rv (gen_z rp gg inst w)) (gen_z rp gg inst w) rv.`alpha.
-print batch_check_true.
-rewrite (batch_check_true rp rv {| topo = topo ; gates = gg ; out_wires = ys |} w inst).
+have ->: batch_check (gen_f (alpha, y) (gen_z rp gg inst w)) (gen_z rp gg inst w) alpha.
+rewrite (batch_check_true rp (alpha, y) {| topo = topo ; gates = gg ; out_wires = ys |} w inst).
 smt().
 smt().
 smt().
+by smt().
 
 simplify.
 have ->: valid_circuit {| topo = topo; gates = gg; out_wires = ys; |} by smt().
@@ -569,23 +571,23 @@ have ->: fsub
    (fsub
       (fmul
          (fadd
-            (nth def_yi rv.`y
+            (nth def_yi y
                (topo.`npinputs + topo.`nsinputs + topo.`ngates)).`v
             (fsub fone
                (nth def_ui rp
                   (topo.`npinputs + topo.`nsinputs + topo.`ngates)).`b))
-         (get_fi (gen_f rv (gen_z rp gg inst w))).`e)
+         (get_fi (gen_f (alpha, y) (gen_z rp gg inst w))).`e)
       (fadd
-         (nth def_yi rv.`y
+         (nth def_yi y
             (topo.`npinputs + topo.`nsinputs + topo.`ngates + 1)).`v
          (fsub (fmul fone (eval_gates gg inst w))
             (nth def_ui rp
                (topo.`npinputs + topo.`nsinputs + topo.`ngates + 1)).`b)))
-   (fmul rv.`alpha
+   (fmul alpha
       (fadd
-         (nth def_yi rv.`y
+         (nth def_yi y
             (topo.`npinputs + topo.`nsinputs + topo.`ngates + 1)).`v'
-         (fmul rv.`alpha
+         (fmul alpha
             (fsub
                (fmul
                   (nth def_ui rp
@@ -593,7 +595,7 @@ have ->: fsub
                   (nth def_ui rp (get_gid gg)).`a)
                (nth def_ui rp
                   (topo.`npinputs + topo.`nsinputs + topo.`ngates + 1)).`a')))) =
- fmul rv.`alpha
+ fmul alpha
    (fsub
       (fsub
          (fadd
@@ -606,13 +608,16 @@ have ->: fsub
       (nth def_ui rp (topo.`npinputs + topo.`nsinputs + topo.`ngates + 1)).`b').
 rewrite !H15 //=.
 smt().
-rewrite !H14 //=.
 smt().
+rewrite !H16 //=.
 smt().
+(*smt().*)
+(*smt().*)
 (*smt.
 rewrite H15 //= 1:/#.
 print get_fi_exec.*)
-rewrite (get_fi_exec rp rv {| topo = topo ; gates = gg ; out_wires = ys |} w inst).
+rewrite (get_fi_exec rp (alpha, y) {| topo = topo ; gates = gg ; out_wires = ys |} w inst).
+smt().
 smt().
 smt().
 smt().
@@ -646,69 +651,69 @@ move : H4 H6 H5; elim gg => //=.
     move => wid => />; progress.
     rewrite /eval_circuit /get_e /get_a /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 1:/#.
+    rewrite H15 1:/#.
     case (nth fzero inst wid = fzero); progress.
       rewrite H6 mulf0.
-      by have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      by have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
       rewrite mul1f.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (nth fzero inst wid) (nth def_ui rp max_wire).`b) = fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth fzero inst wid) by ringeq.
-      have ->: fmul rv.`alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (nth fzero inst wid) (nth def_ui rp max_wire).`b) = fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth fzero inst wid) by ringeq.
+      have ->: fmul alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
     by rewrite non_zero_add.
     (* Secret input gate *)
     move => wid => />; progress.
     rewrite /eval_circuit /get_e /get_a /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 1:/#.
+    rewrite H15 1:/#.
     case (nth fzero w wid = fzero); progress.
       rewrite H6 mulf0.
-      by have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      by have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
       rewrite mul1f.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (nth fzero w wid) (nth def_ui rp max_wire).`b) = fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth fzero w wid) by ringeq.
-      have ->: fmul rv.`alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (nth fzero w wid) (nth def_ui rp max_wire).`b) = fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth fzero w wid) by ringeq.
+      have ->: fmul alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
     by rewrite non_zero_add.
     (* Constant gate *)
     move => gid c => />; progress.
     rewrite /eval_circuit /get_e /get_a /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 1:/#.
+    rewrite H15 1:/#.
     case (c = fzero); progress.
       rewrite mulf0.
-      by have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      by have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
       rewrite mul1f.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub c (nth def_ui rp max_wire).`b) = fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) c by ringeq.
-      have ->: fmul rv.`alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub c (nth def_ui rp max_wire).`b) = fadd (fmul alpha (nth def_ui rp max_wire).`a) c by ringeq.
+      have ->: fmul alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
     by rewrite non_zero_add.
     (* Addition gate *)
     move => gid l r; rewrite /eval_circuit /get_e /get_a /=; progress.  
     rewrite /eval_circuit /get_e /get_a /=; progress. 
-    move : H4; rewrite H6 H25 H27; progress.
-    move : H5; rewrite H16 H26 H28; progress.
+    move : H4; rewrite H6 H26 H28; progress.
+    move : H5; rewrite H17 H27 H29; progress.
     rewrite /get_e /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 //= 1:/#.
+    rewrite H15 //= 1:/#.
     case (fadd (eval_gates l inst w) (eval_gates r inst w) = fzero); progress.
-      rewrite H29 mulf0.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      rewrite H30 mulf0.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
       by smt(@PrimeField).
       rewrite mul1f.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (fadd (eval_gates l inst w) (eval_gates r inst w)) (nth def_ui rp max_wire).`b) = fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (fadd (eval_gates l inst w) (eval_gates r inst w)) by ringeq.
-      have ->: fmul rv.`alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (fadd (eval_gates l inst w) (eval_gates r inst w)) (nth def_ui rp max_wire).`b) = fadd (fmul alpha (nth def_ui rp max_wire).`a) (fadd (eval_gates l inst w) (eval_gates r inst w)) by ringeq.
+      have ->: fmul alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
     by rewrite non_zero_add.
     (* Multiplication gate *)
     move => gid l r; rewrite /eval_circuit /get_e /get_a /=; progress.  
     rewrite /eval_circuit /get_e /get_a /=; progress. 
-    move : H4; rewrite H6 H25 H27; progress.
-    move : H5; rewrite H16 H26 H28; progress.
+    move : H4; rewrite H6 H26 H28; progress.
+    move : H5; rewrite H17 H27 H29; progress.
     rewrite /get_e /=.
     pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates + 1.
-    rewrite H14 //= 1:/#.
+    rewrite H15 //= 1:/#.
     case (fmul (eval_gates l inst w) (eval_gates r inst w) = fzero); progress.
-      rewrite H29 mulf0.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      rewrite H30 mulf0.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub fzero (nth def_ui rp max_wire).`b) = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
       by smt(@PrimeField).
       rewrite mul1f.
-      have ->: fadd (fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (fmul (eval_gates l inst w) (eval_gates r inst w)) (nth def_ui rp max_wire).`b) = fadd (fmul rv.`alpha (nth def_ui rp max_wire).`a) (fmul (eval_gates l inst w) (eval_gates r inst w)) by ringeq.
-      have ->: fmul rv.`alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a rv.`alpha by ringeq.
+      have ->: fadd (fadd (fmul alpha (nth def_ui rp max_wire).`a) (nth def_ui rp max_wire).`b) (fsub (fmul (eval_gates l inst w) (eval_gates r inst w)) (nth def_ui rp max_wire).`b) = fadd (fmul alpha (nth def_ui rp max_wire).`a) (fmul (eval_gates l inst w) (eval_gates r inst w)) by ringeq.
+      have ->: fmul alpha (nth def_ui rp max_wire).`a = fmul (nth def_ui rp max_wire).`a alpha by ringeq.
     by rewrite non_zero_add.
 qed.
 
@@ -758,18 +763,18 @@ qed.
         alpha <$ FDistr.dt;
         y <- map (fun u => {| v = fadd (fmul alpha u.`a) u.`b ; v' = fadd (fmul alpha u.`a') u.`b' |}) rp;
 
-        return ({| alpha = alpha; y = y |});
+        return (alpha, y);
       }
     }.
   
     (** Malicious prover declaration *)
     declare module MP <: MProver_t.
 
-lemma get_fi_pinputz rv z circ :
+lemma get_fi_pinputz alpha y z circ :
   is_pinputz z =>
   valid_circuit circ =>
   valid_z_gates z circ.`gates =>
-  (get_fi (gen_f rv z)).`e = fadd (nth def_yi rv.`y (as_pinputz z).`1).`v (as_pinputz z).`2.`m. 
+  (get_fi (gen_f (alpha, y) z)).`e = fadd (nth def_yi y (as_pinputz z).`1).`v (as_pinputz z).`2.`m. 
 proof.
 elim circ => topo gg ys //=.
 rewrite /valid_circuit //= /valid_topology /valid_gates //=.
@@ -778,11 +783,11 @@ move : H9 H.
 elim z => //=.
 qed.
 
-lemma get_fi_sinputz rv z circ :
+lemma get_fi_sinputz alpha y z circ :
   is_sinputz z =>
   valid_circuit circ =>
   valid_z_gates z circ.`gates =>
-  (get_fi (gen_f rv z)).`e = fadd (nth def_yi rv.`y (as_sinputz z).`1).`v (as_sinputz z).`2.`m. 
+  (get_fi (gen_f (alpha, y) z)).`e = fadd (nth def_yi y (as_sinputz z).`1).`v (as_sinputz z).`2.`m. 
 proof.
 elim circ => topo gg ys //=.
 rewrite /valid_circuit //= /valid_topology /valid_gates //=.
@@ -791,11 +796,11 @@ move : H9 H.
 elim z => //=.
 qed.
 
-lemma get_fi_constantz rv z circ :
+lemma get_fi_constantz alpha y z circ :
   is_constantz z =>
   valid_circuit circ =>
   valid_z_gates z circ.`gates =>
-  (get_fi (gen_f rv z)).`e = fadd (nth def_yi rv.`y (as_constantz z).`1).`v (as_constantz z).`2.`m. 
+  (get_fi (gen_f (alpha, y) z)).`e = fadd (nth def_yi y (as_constantz z).`1).`v (as_constantz z).`2.`m. 
 proof.
 elim circ => topo gg ys //=.
 rewrite /valid_circuit //= /valid_topology /valid_gates //=.
@@ -804,11 +809,11 @@ move : H9 H.
 elim z => //=.
 qed.
 
-lemma get_fi_additionz rv z circ :
+lemma get_fi_additionz alpha y z circ :
   is_additionz z =>
   valid_circuit circ =>
   valid_z_gates z circ.`gates =>
-  (get_fi (gen_f rv z)).`e = fadd (nth def_yi rv.`y (as_additionz z).`1).`v (as_additionz z).`2.`m. 
+  (get_fi (gen_f (alpha, y) z)).`e = fadd (nth def_yi y (as_additionz z).`1).`v (as_additionz z).`2.`m. 
 proof.
 elim circ => topo gg ys //=.
 rewrite /valid_circuit //= /valid_topology /valid_gates //=.
@@ -817,11 +822,11 @@ move : H9 H.
 elim z => //=.
 qed.
 
-lemma get_fi_multiplicationz rv z circ :
+lemma get_fi_multiplicationz alpha y z circ :
   is_multiplicationz z =>
   valid_circuit circ =>
   valid_z_gates z circ.`gates =>
-  (get_fi (gen_f rv z)).`e = fadd (nth def_yi rv.`y (as_multiplicationz z).`1).`v (as_multiplicationz z).`2.`m_mul. 
+  (get_fi (gen_f (alpha, y) z)).`e = fadd (nth def_yi y (as_multiplicationz z).`1).`v (as_multiplicationz z).`2.`m_mul. 
 proof.
 elim circ => topo gg ys //=.
 rewrite /valid_circuit //= /valid_topology /valid_gates //=.
@@ -842,13 +847,13 @@ lemma leq_transitivity_real (a b c : real):
     proof.
       progress; byphoare (_ : rp = rp_ /\ x = x_ ==> res) => //=.
       proc; inline*.
-      rcondt 6.
+      (*rcondt 6.
         wp; rnd; wp; call (_ : true); wp; skip; progress.
-          rewrite /valid_rand_verifier //=.
+          rewrite /valid_rand_verifier //= /valid_correlated_randomness //=.
           elim (x{hr}) => circ inst //=; progress.
           by simplify; rewrite size_map //=.
           by rewrite (nth_map def_ui def_yi); first by move : H1; rewrite size_map.
-          by rewrite (nth_map def_ui def_yi); first by move : H1; rewrite size_map.
+          by rewrite (nth_map def_ui def_yi); first by move : H1; rewrite size_map.*)
       wp; rnd; wp; simplify; call (_ : true); skip; progress.
       (*wp; rnd; wp; simplify; call (mp_commit_exec rp_ x_); skip; progress.*)
       case (! language x{hr}); progress; last by rewrite mu0; smt.
@@ -859,7 +864,7 @@ lemma leq_transitivity_real (a b c : real):
       elim result => z n /=.
       elim (x{hr}) => c inst. 
       elim c => topo gg ys /=.
-      rewrite /add_final_mul /= /valid_z /= /get_e /get_fi /=.
+      rewrite /add_final_mul /= /valid_z /= /get_e /get_fi /= /DVNIZKProtocol.valid_rand_prover /DVNIZKProtocol.valid_rand_verifier /DVNIZKProtocol.valid_correlation_term /DVNIZKProtocol.valid_correlated_randomness //=.
       pose max_wire := topo.`npinputs + topo.`nsinputs + topo.`ngates.
 progress.
 case (valid_circuit {| topo = topo; gates = gg; out_wires = ys; |}); progress; last by rewrite mu0; smt.
@@ -869,39 +874,88 @@ case (is_constantz (as_multiplicationz z).`3); progress; last by rewrite mu0; sm
 case ((as_constantz (as_multiplicationz z).`3).`1 = max_wire); progress; last by rewrite mu0; smt.
 case (valid_z_gates (as_multiplicationz z).`4 gg); progress; last by rewrite mu0; smt.
 case (n <> fzero); progress; last by rewrite mu0; smt.
-rewrite /DVNIZKProtocol.valid_rand_prover.
 case (valid_rand_prover rp{hr} ({| topo = topo; gates = gg; out_wires = ys; |}, inst)); progress; last by rewrite mu0; smt.
+rewrite /valid_correlation_term //=.
+
+have ->: mu FDistr.dt
+  (fun (x0 : t) =>
+     (valid_correlated_randomness
+        (map
+           (fun (u : ui_t) =>
+              {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
+                  fadd (fmul x0 u.`a') u.`b'; |}) rp{hr})
+        ({| topo = topo; gates = gg; out_wires = ys; |}, inst)) /\
+     batch_check
+       (gen_f
+          (x0,
+           map
+             (fun (u : ui_t) =>
+                {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
+                    fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0 &&
+     (get_fi
+        (gen_f
+           (x0,
+            map
+              (fun (u : ui_t) =>
+                 {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
+                     fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z)).`e =
+     fmul n x0) = 
+mu FDistr.dt
+  (fun (x0 : t) =>
+     batch_check
+       (gen_f
+          (x0,
+           map
+             (fun (u : ui_t) =>
+                {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
+                    fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0 &&
+     (get_fi
+        (gen_f
+           (x0,
+            map
+              (fun (u : ui_t) =>
+                 {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
+                     fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z)).`e =
+     fmul n x0).
+congr.
+rewrite fun_ext /(==) => x; progress.
+rewrite /valid_correlated_randomness //= size_map.
+move : H7.
+rewrite /valid_rand_prover //=.
+progress.
+by rewrite H7 //=.
+
 have ->: (fun (x0 : t) =>
      batch_check
        (gen_f
-          {| alpha = x0; y =
+          (x0,
               map
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0 &&
+                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0 &&
      (get_fi
         (gen_f
-           {| alpha = x0; y =
+           (x0,
                map
                  (fun (u : ui_t) =>
                     {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z)).`e =
+                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z)).`e =
      fmul n x0) = 
 (fun (x0 : t) =>
      (batch_check
        (gen_f
-          {| alpha = x0; y =
+          (x0,
               map
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0) /\
+                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0) /\
      (get_fi
         (gen_f
-           {| alpha = x0; y =
+           (x0,
                map
                  (fun (u : ui_t) =>
                     {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z)).`e =
+                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z)).`e =
      fmul n x0).
 rewrite fun_ext /(==); progress.
 smt().
@@ -909,39 +963,39 @@ have : mu FDistr.dt
   (fun (x0 : t) =>
      batch_check
        (gen_f
-          {| alpha = x0; y =
+          (x0,
               map
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0 /\
+                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0 /\
      (get_fi
         (gen_f
-           {| alpha = x0; y =
+           (x0,
                map
                  (fun (u : ui_t) =>
                     {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z)).`e =
+                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z)).`e =
      fmul n x0) <= 
 mu FDistr.dt
   (fun (x0 : t) =>
      batch_check
        (gen_f
-          {| alpha = x0; y =
+          (x0,
               map
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0).
+                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0).
 rewrite mu_and_leq.
 progress.
 have : mu FDistr.dt
       (fun (x0 : t) =>
          batch_check
            (gen_f
-              {| alpha = x0; y =
+              (x0,
                   map
                     (fun (u : ui_t) =>
                        {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0) <= 2%r / q%r.
+                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0) <= 2%r / q%r.
 clear H8.
 have : exists gid_final_mul zi_final_mul zl zr, z = MultiplicationZ gid_final_mul zi_final_mul zl zr.
 move : H1.
@@ -979,11 +1033,11 @@ have : mu FDistr.dt
                 zi_final_const.`m)
              (get_fi
                 (gen_f
-                   {| alpha = x0; y =
+                   (x0,
                        map
                          (fun (u : ui_t) =>
                             {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e)
+                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e)
           (fadd
              (nth def_yi
                 (map
@@ -1002,11 +1056,11 @@ have : mu FDistr.dt
      fmul x0 zi_final_mul.`LPZK.c /\
      batch_check
        (gen_f
-          {| alpha = x0; y =
+          (x0,
               map
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr) zr x0) <=
+                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr) zr x0) <=
 mu FDistr.dt
   (fun (x0 : t) =>
      fsub
@@ -1021,11 +1075,11 @@ mu FDistr.dt
                 zi_final_const.`m)
              (get_fi
                 (gen_f
-                   {| alpha = x0; y =
+                   (x0,
                        map
                          (fun (u : ui_t) =>
                             {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e)
+                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e)
           (fadd
              (nth def_yi
                 (map
@@ -1058,11 +1112,11 @@ have : mu FDistr.dt
                        max_wire).`v zi_final_const.`m)
                  (get_fi
                     (gen_f
-                       {| alpha = x0; y =
+                       (x0,
                            map
                              (fun (u : ui_t) =>
                                 {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                                    fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}
+                                    fadd (fmul x0 u.`a') u.`b'; |}) rp{hr})
                        zr)).`e)
               (fadd
                  (nth def_yi
@@ -1095,11 +1149,11 @@ have ->: (fun (x0 : t) =>
                 zi_final_const.`m)
              (get_fi
                 (gen_f
-                   {| alpha = x0; y =
+                   (x0,
                        map
                          (fun (u : ui_t) =>
                             {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e)
+                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e)
           (fadd
              (nth def_yi
                 (map
@@ -1127,11 +1181,11 @@ have ->: (fun (x0 : t) =>
                 zi_final_const.`m)
              (get_fi
                 (gen_f
-                   {| alpha = x0; y =
+                   (x0,
                        map
                          (fun (u : ui_t) =>
                             {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e)
+                                fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e)
           (fadd
              ((fun (u : ui_t) =>
                          {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
@@ -1151,9 +1205,9 @@ done.
 simplify.
 
 case (is_pinputz zr); progress.
-have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}.`y (as_pinputz zr).`1).`v (as_pinputz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
+have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f (x0, map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) (as_pinputz zr).`1).`v (as_pinputz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
 rewrite fun_ext /(==); progress.
-rewrite (get_fi_pinputz ({| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
+rewrite (get_fi_pinputz x0 (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
 done.
 done.
 done.
@@ -1195,9 +1249,9 @@ rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub 
 done.
 
 case (is_sinputz zr); progress.
-have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}.`y (as_sinputz zr).`1).`v (as_sinputz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
+have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f (x0, map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) (as_sinputz zr).`1).`v (as_sinputz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
 rewrite fun_ext /(==); progress.
-rewrite (get_fi_sinputz ({| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
+rewrite (get_fi_sinputz x0 (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
 done.
 done.
 done.
@@ -1239,9 +1293,9 @@ rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub 
 done.
 
 case (is_constantz zr); progress.
-have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}.`y (as_constantz zr).`1).`v (as_constantz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
+have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f (x0, map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) (as_constantz zr).`1).`v (as_constantz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
 rewrite fun_ext /(==); progress.
-rewrite (get_fi_constantz ({| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
+rewrite (get_fi_constantz x0 (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
 done.
 done.
 done.
@@ -1283,9 +1337,9 @@ rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub 
 done.
 
 case (is_additionz zr); progress.
-have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}.`y (as_additionz zr).`1).`v (as_additionz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
+have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f (x0, map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) (as_additionz zr).`1).`v (as_additionz zr).`2.`m)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
 rewrite fun_ext /(==); progress.
-rewrite (get_fi_additionz ({| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
+rewrite (get_fi_additionz x0 ( map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
 done.
 done.
 done.
@@ -1327,9 +1381,9 @@ rewrite (FDistr.dt2E (fsub (fsub (fmul w z) l) u) (fadd (fsub (fadd (fadd (fsub 
 done.
 
 case (is_multiplicationz zr); progress.
-have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi {| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}.`y (as_multiplicationz zr).`1).`v (as_multiplicationz zr).`2.`m_mul)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
+have ->: (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (get_fi (gen_f (x0, map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr)).`e) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c) = (fun (x0 : t) => fsub (fsub (fmul (fadd (fadd (fmul x0 (nth def_ui rp{hr} max_wire).`a) (nth def_ui rp{hr} max_wire).`LPZK.b) zi_final_const.`m) (fadd (nth def_yi (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' = fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) (as_multiplicationz zr).`1).`v (as_multiplicationz zr).`2.`m_mul)) (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a) (nth def_ui rp{hr} (max_wire + 1)).`LPZK.b) zi_final_mul.`m_mul)) (fmul x0 (fadd (fadd (fmul x0 (nth def_ui rp{hr} (max_wire + 1)).`a') (nth def_ui rp{hr} (max_wire + 1)).`b') (fmul x0 zi_final_mul.`m'))) = fmul x0 zi_final_mul.`LPZK.c).
 rewrite fun_ext /(==); progress.
-rewrite (get_fi_multiplicationz ({| alpha = x0; y = map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
+rewrite (get_fi_multiplicationz x0 (map (fun (u : ui_t) => {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) zr ({| topo = topo; gates = gg; out_wires = ys; |})).
 done.
 done.
 done.
@@ -1381,27 +1435,27 @@ rewrite (leq_transitivity_real (mu FDistr.dt
   (fun (x0 : t) =>
      batch_check
        (gen_f
-          {| alpha = x0; y =
+          (x0,
               map
                 (fun (u : ui_t) =>
                    {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0 /\
+                       fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0 /\
      (get_fi
         (gen_f
-           {| alpha = x0; y =
+           (x0,
                map
                  (fun (u : ui_t) =>
                     {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z)).`e =
+                        fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z)).`e =
      fmul n x0)) (mu FDistr.dt
       (fun (x0 : t) =>
          batch_check
            (gen_f
-              {| alpha = x0; y =
+              (x0,
                   map
                     (fun (u : ui_t) =>
                        {| v = fadd (fmul x0 u.`a) u.`LPZK.b; v' =
-                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}; |} z) z x0)) (2%r / q%r)).
+                           fadd (fmul x0 u.`a') u.`b'; |}) rp{hr}) z) z x0)) (2%r / q%r)).
 done.
 done.
 qed.
