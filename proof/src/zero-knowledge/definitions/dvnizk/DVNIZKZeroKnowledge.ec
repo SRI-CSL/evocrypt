@@ -120,8 +120,8 @@ theory ZeroKnowledge.
 
   (** Zero-knowledge cryptographic experience *)
   module ZKGame (D : Distinguisher_t) (E : Evaluator_t) = {
-    proc main() : bool = {
-      var xp, xv, v, b', alpha;
+    proc main(x : prover_input_t, y : verifier_input_t, alpha : correlation_term_t) : bool = {
+      var xp, xv, v, b';
 
       (xp, xv, alpha) <@ D.init();
       v <- None;

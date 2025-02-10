@@ -1789,23 +1789,28 @@ split; first by rewrite Hl => //= /#.
     (** Simulator module. The simulator will behave according to the [commit] operation, but
         it will invoke the [gen_z_sim] operator (that assumes that all witness values are 0)
         instead of the honest [gen_z] operator *)
-    module Simulator = {
+    module Simulator : Simulator_t = {
       var x : statement_t
-      proc init(x_ : statement_t) : unit = {
+      var alpha : correlation_term_t
+
+      proc init(x_ : statement_t, alpha_ : correlation_term_t) : unit = {
         x <- x_;
+        alpha <- alpha_;
       }
-      proc gen_commitment() : commitment_t option = {
-        var c, inst, topo, gg, z, z', rp;
+
+      proc gen_commitment() : (verifier_rand_t * commitment_t) option = {
+        var c, inst, topo, gg, z, z', rp, rv;
 
         (c, inst) <- x;
         rp <@ RP.gen(x);
+        rv <- generate_correlated_randomness rp alpha;
         c <- add_final_mul c;
         topo <- c.`topo;
         gg <- c.`gates;
         z <- gen_z_sim rp gg inst;
         z' <- (get_a rp gg);
 
-        return Some (z, z');
+        return Some (rv, (z, z'));
       }
     }.
 
@@ -1868,17 +1873,378 @@ split; first by rewrite Hl => //= /#.
     (** Malicious verifier declaration *)    
     declare module MV <: MVerifier_t{-D, -RealEvaluator, -Simulator, -IdealEvaluator}.
 
+    module D1 : Distinguisher_t = {
+      proc init() : prover_input_t * verifier_input_t * correlation_term_t = {
+        var alpha, ret;
+        ret <@ D.init();
+        alpha <$ FDistr.dt;
+        return (ret.`1, ret.`2, alpha);
+      }
+
+      proc guess = D.guess
+    }.
+
     (** Zero-knowledge lemma, according to the zero-knowledge game of the 
         *ZeroKnowledgeDVNIZKP.ec* file. We prove that if the witness and the statement are in the
         relation, and if the circuit and inputs are well-formed, then the *real* workd and the
         *ideal* world are indistinguishable *)
-    lemma zero_knowledge_eq &m :
-      equiv [ GameReal(D, RP, MV).main ~ GameIdeal(D, MV, Simulator).main : 
+    lemma zero_knowledge_eq :
+      equiv [ GameReal(D1, RP, MV).main ~ GameIdeal(D1, MV, Simulator).main : 
                 ={glob RP, glob D, glob MV} ==> ={res} ].
     proof.
-      proc; inline *.
-seq 1 1 : (#pre /\ ={xp, xv}).
+      proc. 
+inline D1.init.
+transitivity{1} 
+{
+  ret <@ D.init();
+  alpha0 <$ FDistr.dt;
+  v <- None;
+  if (valid_inputs (ret.`1, ret.`2) /\ valid_correlation_term alpha0) {
+    RealEvaluator(RP, MV).init(ret.`1, ret.`2, alpha0);
+    v <@ RealEvaluator(RP, MV).eval();
+  }
+
+  b' <@ D1.guess(v);
+}
+(={glob D, glob MV} ==> ={b'})
+(={glob D, glob MV} ==> ={b'}).
+progress.
+exists (glob D){2} (glob MV){2}. done.
+done.
+seq 1 1 : (#pre /\ ={ret}).
 call (_ : true); skip; progress.
+seq 1 1 : (#pre /\ ={alpha0}).
+auto; progress.
+sp.
+if => //=; last first.
+call (_ : true); skip; progress.
+sim.
+inline*.
+auto; progress.
+
+transitivity{2} 
+{
+  ret <@ D.init();
+  alpha0 <$ FDistr.dt;
+  v <- None;
+  if (valid_inputs (ret.`1, ret.`2) /\ valid_correlation_term alpha0) {
+    IdealEvaluator(MV, Simulator).init(ret.`1, ret.`2, alpha0);
+    v <@ IdealEvaluator(MV, Simulator).eval();
+  }
+
+  b' <@ D1.guess(v);
+}
+(={glob D, glob MV} ==> ={b'})
+(={glob D, glob MV, glob Simulator} ==> ={b'}).
+progress.
+exists (glob D){2} (glob MV){2} Simulator.alpha{2} Simulator.x{2}. done.
+done.
+
+(*********************************************************)
+seq 1 1 : (#pre /\ ={ret}).
+call (_ : true); skip; progress.
+case ((valid_inputs (ret.`1, ret.`2)){1}); last first.
+rcondf{1} 3.
+  move => &m; auto.
+rcondf{2} 3.
+  move => &m; auto.
+call (_ : true).
+auto; progress.
+rcondt{1} 3.
+  move => &m; auto.
+rcondt{2} 3.
+  move => &m; auto.
+inline RealEvaluator(RP, MV).init.
+transitivity{1} 
+{
+  alpha0 <$ FDistr.dt;
+  v <- None;
+  RealEvaluator.xp <- ret.`1;
+  RealEvaluator.alpha <- alpha0;
+  v <@ RealEvaluator(RP, MV).eval();
+  b' <@ D1.guess(v);
+}
+(={glob D, glob MV, ret} ==> ={b'})
+(={glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'}).
+progress.
+exists (glob D){2} (glob MV){2} ret{2}.
+done.
+done.
+sim.
+by auto; progress.
+inline IdealEvaluator(MV, Simulator).init.
+inline Simulator.init.
+transitivity{2} 
+{
+  alpha0 <$ FDistr.dt;
+  v <- None;
+  Simulator.x <- ret.`2;
+  Simulator.alpha <- alpha0;
+  IdealEvaluator.yv <- relation ret.`1.`1 ret.`2;
+  IdealEvaluator.statement <- ret.`2;
+  IdealEvaluator.xp <- ret.`1;
+  v <@ IdealEvaluator(MV, Simulator).eval();
+  b' <@ D1.guess(v);
+}
+(={glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'})
+(={glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'}).
+progress.
+exists (glob D){2} (glob MV){2} ret{2}.
+done.
+done.
+
+(*********************************************************)
+inline*.
+swap{1} 4 19.
+swap{1} 1 21.
+swap{2} 4 23.
+swap{2} 1 25.
+swap{1} 3,4 10.
+
+(*********************************************************)
+
+
+inline*.
+call (_ : true).
+wp.
+rcondt{1} 35.
+progress.
+auto.
+seq 1 : (#pre).
+rnd; skip; progress.
+sp.
+while (v = None /\
+  Simulator.x = ret.`2 /\
+  Simulator.alpha = alpha0 /\
+  IdealEvaluator.yv = (relation ret.`1.`1 ret.`2) /\
+  IdealEvaluator.statement = ret.`2 /\
+  IdealEvaluator.xp = ret.`1 /\
+  ret0 = None /\
+  (c0, inst) = Simulator.x /\
+  x1 = Simulator.x /\
+  (c1, inst0) = x1 /\
+  topo0 = c1.`Circuit.topo /\
+  gg0 = c1.`gates /\
+  (glob D) = (glob D){m} /\ (glob MV) = (glob MV){m} /\ ret = ret{m} /\
+  0 <= i <= topo0.`npinputs + topo0.`nsinputs + topo0.`ngates).
+auto; progress.
+smt().
+smt().
+skip; progress.
+smt().
+
+rcondt{2} 38.
+progress.
+auto.
+seq 1 : (#pre).
+rnd; skip; progress.
+sp.
+while (v = None /\
+  x0 = (ret.`1, ret.`2, alpha0) /\
+  x_ = x0.`2 /\
+  alpha_ = x0.`3 /\
+  Simulator.x = x_ /\
+  Simulator.alpha = alpha_ /\
+  IdealEvaluator.yv = (relation x0.`1.`1 x0.`2)%DVNIZKProtocol /\
+  IdealEvaluator.statement = x0.`2 /\
+  IdealEvaluator.xp = x0.`1 /\
+  ret0 = None /\
+  (c0, inst) = Simulator.x /\
+  x1 = Simulator.x /\
+  (c1, inst0) = x1 /\
+  topo0 = c1.`Circuit.topo /\
+  gg0 = c1.`gates /\
+  ((glob D){m} = (glob D) /\ (glob MV){m} = (glob MV) /\ ret{m} = ret) /\
+  (valid_inputs (ret{m}.`1, ret{m}.`2)) /\
+  0 <= i <= topo0.`npinputs + topo0.`nsinputs + topo0.`ngates).
+auto; progress.
+smt().
+smt().
+skip; progress.
+smt().
+auto.
+call (_ : true).
+auto.
+seq 1 1 : (#pre /\ ={alpha0}).
+rnd; skip; progress.
+sp.
+while (v{2} = None /\
+  x0{2} = (ret{2}.`1, ret{2}.`2, alpha0{2}) /\
+  x_{2} = x0{2}.`2 /\
+  alpha_{2} = x0{2}.`3 /\
+  Simulator.x{2} = x_{2} /\
+  Simulator.alpha{2} = alpha_{2} /\
+  IdealEvaluator.yv{2} = (relation x0{2}.`1.`1 x0{2}.`2)%DVNIZKProtocol /\
+  IdealEvaluator.statement{2} = x0{2}.`2 /\
+  IdealEvaluator.xp{2} = x0{2}.`1 /\
+  ret0{2} = None /\
+  (c0{2}, inst{2}) = Simulator.x{2} /\
+  x1{2} = Simulator.x{2} /\
+  (c1{2}, inst0{2}) = x1{2} /\
+  topo0{2} = c1{2}.`Circuit.topo /\
+  gg0{2} = c1{2}.`gates /\
+  v{1} = None /\
+  Simulator.x{1} = ret{1}.`2 /\
+  Simulator.alpha{1} = alpha0{1} /\
+  IdealEvaluator.yv{1} = (relation ret{1}.`1.`1 ret{1}.`2) /\
+  IdealEvaluator.statement{1} = ret{1}.`2 /\
+  IdealEvaluator.xp{1} = ret{1}.`1 /\
+  ret0{1} = None /\
+  (c0{1}, inst{1}) = Simulator.x{1} /\
+  x1{1} = Simulator.x{1} /\
+  (c1{1}, inst0{1}) = x1{1} /\
+  topo0{1} = c1{1}.`Circuit.topo /\
+  gg0{1} = c1{1}.`gates /\
+  (={glob D, glob MV, ret} /\ (valid_inputs (ret{1}.`1, ret{1}.`2))) /\
+  ={alpha0} /\ ={i} /\ (0 <= i <= topo0.`npinputs + topo0.`nsinputs + topo0.`ngates){1} /\ ={rp0}).
+auto; progress.
+smt().
+smt().
+smt().
+smt().
+auto; progress.
+smt().
+smt().
+smt().
+smt().
+smt().
+
+(*********************************************************)
+
+seq 1 1 : (#pre /\ ={ret}).
+call (_ : true); skip; progress.
+seq 1 1 : (#pre /\ ={alpha0}).
+auto; progress.
+sp.
+if => //=; last first.
+call (_ : true); skip; progress.
+sim.
+inline*.
+auto; progress.
+qed.
+
+
+
+
+
+
+call (_ : true). 
+auto.
+sp.
+seq 1 1 : (#[/]pre).
+call (_ : true). 
+sp.
+seq 1 1 : (#pre /\ ={rp}).
+call (_ : true).
+sp.
+auto.
+while ((c{2}, inst{2}) = x{2} /\
+  topo{2} = c{2}.`Circuit.topo /\
+  gg{2} = c{2}.`gates /\
+  (c{1}, inst{1}) = x{1} /\
+  topo{1} = c{1}.`Circuit.topo /\
+  gg{1} = c{1}.`gates /\ ={x} /\
+  0 <= i{1} <= c.`Circuit.topo{1}.`npinputs + c.`Circuit.topo{1}.`nsinputs + c.`Circuit.topo{1}.`ngates /\ ={i} /\ ={rp}).
+auto; progress.
+smt().
+smt().
+auto; progress.
+smt().
+
+
+
+
+inline*.
+wp.
+sp.
+
+
+sim.
+wp.
+auto; skip; progress.
+
+
+rewrite /valid_correlation_term //=.
+rewrite /valid_inputs //=.
+move => &1 &2.
+elim (xp{1}) => w stp //=.
+elim (xv{1}) => c inst //=.
+elim (xp{2}) => w0 stp0 //=.
+elim (xv{2}) => c0 inst0 //=.
+simplify.
+progress.
+smt.
+
+elim 
+smt().
+
+
+
+
+
+
+
+inline *.
+seq 1 1 : (#pre /\ ={ret}).
+call (_ : true); skip; progress.
+case ((valid_inputs (xp0, xv0)){1}); last first.
+rcondf{1} 4.
+  move => &m; auto; progress.
+rcondf{2} 4.
+  move => &m; auto; progress.
+call (_ : true).
+auto; progress.
+rcondt{1} 4.
+  move => &m; auto; progress.
+rcondt{2} 4.
+  move => &m; auto; progress.
+swap{1} 6 19.
+swap{2} 8 23.
+
+call (_ : true).
+auto; progress.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 sp.
 if => //=; last first.
 by call (_ : true).
