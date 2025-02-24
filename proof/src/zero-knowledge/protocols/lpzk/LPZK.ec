@@ -1728,9 +1728,10 @@ split; first by rewrite Hl => //= /#.
       by rewrite H H2 /=.
       (* Multiplication gate *)
       move => gid wl wr Hl Hr Hvalid Hind Hind2; split.
-        congr; first by move : (Hind gid) => /=; rewrite mulf0.
-        by rewrite !H3; move : Hvalid; rewrite /valid_circuit /valid_gates /valid_topology /=; smt.
-        by move : (Hind2 gid) => /=.
+
+split; first by move : (Hind gid) => /=; rewrite mulf0.
+split; first by rewrite !H3; move : Hvalid; rewrite /valid_circuit /valid_gates /valid_topology /=; smt.
+by move : (Hind2 gid) => /=.
       split; first by rewrite Hl => //= /#.
       rewrite Hr => //=; first 2 by smt(). 
       progress; move : (Hind2 k).
@@ -1884,6 +1885,51 @@ split; first by rewrite Hl => //= /#.
       proc guess = D.guess
     }.
 
+    lemma valid_circuit_add_final_mul c : 
+      valid_circuit c =>
+      valid_circuit (add_final_mul c).
+proof.
+rewrite /valid_circuit /valid_topology /valid_gates => //=.
+progress.
+smt().
+smt().
+smt().
+smt().
+smt().
+smt().
+smt().
+rewrite /add_final_mul //=.
+do split.
+smt().
+smt().
+smt().
+smt().
+smt().
+smt.
+progress.
+smt.
+progress.
+smt.
+smt().
+smt().
+clear H4 H5.
+move : H6.
+elim c.`gates => //=.
+progress.
+smt().
+move => gid wl wr; progress.
+smt().
+smt().
+smt().
+move => gid wl wr; progress.
+smt().
+smt().
+smt().
+smt().
+smt().
+smt().
+qed.
+
     (** Zero-knowledge lemma, according to the zero-knowledge game of the 
         *ZeroKnowledgeDVNIZKP.ec* file. We prove that if the witness and the statement are in the
         relation, and if the circuit and inputs are well-formed, then the *real* workd and the
@@ -1906,8 +1952,8 @@ transitivity{1}
 
   b' <@ D1.guess(v);
 }
-(={glob D, glob MV} ==> ={b'})
-(={glob D, glob MV} ==> ={b'}).
+(={glob RP, glob D, glob MV} ==> ={b'})
+(={glob RP, glob D, glob MV} ==> ={b'}).
 progress.
 exists (glob D){2} (glob MV){2}. done.
 done.
@@ -1934,8 +1980,8 @@ transitivity{2}
 
   b' <@ D1.guess(v);
 }
-(={glob D, glob MV} ==> ={b'})
-(={glob D, glob MV, glob Simulator} ==> ={b'}).
+(={glob RP, glob D, glob MV} ==> ={b'})
+(={glob RP, glob D, glob MV, glob Simulator} ==> ={b'}).
 progress.
 exists (glob D){2} (glob MV){2} Simulator.alpha{2} Simulator.x{2}. done.
 done.
@@ -1964,8 +2010,8 @@ transitivity{1}
   v <@ RealEvaluator(RP, MV).eval();
   b' <@ D1.guess(v);
 }
-(={glob D, glob MV, ret} ==> ={b'})
-(={glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'}).
+(={glob RP, glob D, glob MV, ret} ==> ={b'})
+(={glob RP, glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'}).
 progress.
 exists (glob D){2} (glob MV){2} ret{2}.
 done.
@@ -1986,24 +2032,538 @@ transitivity{2}
   v <@ IdealEvaluator(MV, Simulator).eval();
   b' <@ D1.guess(v);
 }
-(={glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'})
-(={glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'}).
+(={glob RP, glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'})
+(={glob RP, glob D, glob MV, ret} /\ valid_inputs (ret{1}.`1, ret{1}.`2) ==> ={b'}).
 progress.
 exists (glob D){2} (glob MV){2} ret{2}.
 done.
 done.
 
 (*********************************************************)
+(* PROVER RANDOMNESS ISOMORPHISM *)
 inline*.
 swap{1} 4 19.
 swap{1} 1 21.
 swap{2} 4 23.
 swap{2} 1 25.
 swap{1} 3,4 10.
+swap{2} 14 11.
+sp.
 
+seq 1 1 : (#[/1:10,13:18,21:]pre /\
+      valid_circuit {| topo = topo{1} ; gates = gg{1} ; out_wires = c0{1}.`out_wires |} /\
+      size rp0{1} = size rp0{2} /\
+      size rp0{1} = topo{1}.`nsinputs + topo{1}.`npinputs + topo{1}.`ngates /\
+      (forall (k : gid_t), 0 <= k < size rp0{1} => (nth def_ui rp0{1} k).`a <> fzero) /\
+      (forall (k : gid_t), mem_gid k gg{1} =>
+                           fsub (eval_until gg{1} inst{1} ret{2}.`1.`1 k) (nth def_ui rp0{1} k).`b =
+                           fsub fzero (nth def_ui rp0{2} k).`b) /\
+      (forall (k : int), 0 <= k < size rp0{1} =>
+                         (nth def_ui rp0{1} k).`a = (nth def_ui rp0{2} k).`a) /\
+      (forall (k : int), 0 <= k < size rp0{1} =>
+                         (nth def_ui rp0{1} k).`a' = (nth def_ui rp0{2} k).`a') /\
+      (forall (k : gid_t), mem_gid k gg{1} => 
+                           is_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k)) =>
+                           fsub (fsub (fadd (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k))).`2)).`a (eval_gates (as_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k))).`3 inst{1} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k))).`3)).`a (eval_gates (as_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k))).`2 inst{1} ret{2}.`1.`1))) (nth def_ui rp0{1} k).`a) (nth def_ui rp0{1} k).`b' = 
+                           fsub (fsub (fadd (fmul (nth def_ui rp0{2} (get_gid (as_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k))).`2)).`a fzero) (fmul (nth def_ui rp0{2} (get_gid (as_multiplication (odflt (def_gate topo{1}) (get_gate gg{1} k))).`3)).`a fzero)) (nth def_ui rp0{2} k).`a) (nth def_ui rp0{2} k).`b')).
+
+while (#[/1:10,13:18,21:]pre /\ ={i} /\ size rp0{2} = i{2} /\ size rp0{1} = size rp0{2} /\ 
+             0 <= i{2} <= topo0{2}.`npinputs + topo0{2}.`nsinputs + topo0{2}.`ngates /\
+             (forall k, 0 <= k < i{2} => 
+                        fsub (eval_until gg0{2} inst{2} ret{2}.`1.`1 k) (nth def_ui rp0{1} k).`b = 
+                        fsub fzero (nth def_ui rp0{2} k).`b) /\ 
+             (forall (k : int), 0 <= k < i{2} =>
+                     (nth def_ui rp0{1} k).`a <> fzero) /\
+             (forall (k : int), 0 <= k < i{2} => 
+                                (nth def_ui rp0{1} k).`a = (nth def_ui rp0{2} k).`a) /\
+             (forall (k : int), 0 <= k < i{2} =>
+                                (nth def_ui rp0{1} k).`a' = (nth def_ui rp0{2} k).`a') /\
+             (forall (k : int), 0 <= k < i{2} =>
+                                is_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k)) =>
+                                fsub (fsub (fadd (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k))).`2)).`a (eval_gates (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k))).`3 inst{2} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k))).`3)).`a (eval_gates (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k))).`2 inst{2} ret{2}.`1.`1))) (nth def_ui rp0{1} k).`a) (nth def_ui rp0{1} k).`b' =
+                                fsub (fsub (fadd (fmul (nth def_ui rp0{2} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k))).`2)).`a fzero) (fmul (nth def_ui rp0{2} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} k))).`3)).`a fzero)) (nth def_ui rp0{2} k).`a) (nth def_ui rp0{2} k).`b')).
+        wp.
+        (* b' isomorphism *)
+        rnd (fun r => fsub r (fsub (fadd (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`2)).`a (eval_gates (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`3 inst{2} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`3)).`a (eval_gates (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`2 inst{2} ret{2}.`1.`1))) (nth def_ui rp0{1} i{2}).`a)) 
+            (fun r => fadd r (fsub (fadd (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`2)).`a (eval_gates (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`3 inst{2} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`3)).`a (eval_gates (as_multiplication (odflt (def_gate topo0{2}) (get_gate gg0{2} i{2}))).`2 inst{2} ret{2}.`1.`1))) (nth def_ui rp0{1} i{2}).`a)).
+        rnd.
+        (* b isomorphism *)
+        rnd (fun r => fsub r (eval_until gg0{2} inst{2} ret{2}.`1.`1 i{2})) 
+            (fun r => fadd r (eval_until gg0{2}  inst{2} ret{2}.`1.`1 i{2})).
+        rnd.
+        skip; progress; first 4 by ringeq.
+          by rewrite size_cat /=.
+          by rewrite !size_cat /= /#.
+          by smt().
+          by smt().
+          rewrite !nth_cat /=.
+          case (k = size rp0{2}); progress.
+            (have ->: size rp0{2} < size rp0{1} <=> false by smt()) => //=.
+            (have ->: size rp0{2} - size rp0{1} = 0 by smt()) => //=.
+            by ringeq.
+          (have ->: k < size rp0{1} <=> true by smt()) => //=.
+          (have ->: k < size rp0{2} by smt()) => //=.
+          by smt().
+
+rewrite !nth_cat //=.
+case (k = size rp0{1}); progress.
+smt.
+smt().
+
+          rewrite !nth_cat /=.
+          case (k = size rp0{2}); progress.
+          (have ->: size rp0{2} < size rp0{1} <=> false by smt()) => //=.
+          (have ->: size rp0{2} - size rp0{1} = 0 by smt()) => //=.
+          (have ->: k < size rp0{1} <=> true by smt()) => //=.
+          (have ->: k < size rp0{2} by smt()) => //=.
+          by smt().
+          rewrite !nth_cat /=.
+          case (k = size rp0{2}); progress.
+          (have ->: size rp0{2} < size rp0{1} <=> false by smt()) => //=.
+          (have ->: size rp0{2} - size rp0{1} = 0 by smt()) => //=.
+          (have ->: k < size rp0{1} <=> true by smt()) => //=.
+          (have ->: k < size rp0{2} by smt()) => //=.
+          by smt().
+          rewrite !nth_cat /=.
+          case (k = size rp0{2}); progress.
+          case (get_gate c1{2}.`gates (size rp0{2}) = None); progress; first by smt().
+          have : valid_gates c1{2}.`Circuit.topo (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates (size rp0{2})))).`2. 
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt.
+          progress.
+          (have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates (size rp0{2})))).`2 < size rp0{1}).
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt.
+          (have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates (size rp0{2})))).`3 < size rp0{1}). 
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt.
+          (have ->: size rp0{2} < size rp0{1} <=> false by smt()) => //=.
+          (have ->: size rp0{2} - size rp0{1} = 0 by smt()) => //=.
+          have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates (size rp0{2})))).`2 < size rp0{2}. 
+rewrite (multiplication_wl_gid_bound c1{2}.`Circuit.topo c1{2}.`Circuit.gates (size rp0{2})).
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt().
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt().
+smt().
+simplify.
+          have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates (size rp0{2})))).`3 < size rp0{2}. 
+rewrite (multiplication_wr_gid_bound c1{2}.`Circuit.topo c1{2}.`Circuit.gates (size rp0{2})).
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt().
+move : H2.
+rewrite /valid_inputs //=.
+rewrite /valid_circuit //=.
+smt().
+smt().
+simplify.
+          ringeq; first rewrite ofint0 /def_ui nth_default. smt().
+smt().
+          (have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates k))).`2 < size rp0{1} by move : H2; rewrite /valid_inputs //= /valid_circuit //=; move : (multiplication_wl_gid_bound c1{2}.`Circuit.topo c1{2}.`Circuit.gates k) => /#) => //=.
+          (have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates k))).`3 < size rp0{1} by by move : H2; rewrite /valid_inputs //= /valid_circuit //=; move : (multiplication_wr_gid_bound c1{2}.`Circuit.topo c1{2}.`Circuit.gates k) => /#) => //=.
+          (have ->: k < size rp0{1} by smt()) => //=.
+          (have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates k))).`2 < size rp0{2} by move : H2; rewrite /valid_inputs //= /valid_circuit //=; by move : (multiplication_wl_gid_bound c1{2}.`Circuit.topo c1{2}.`Circuit.gates k) => /#) => //=.
+          (have ->: get_gid (as_multiplication (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`Circuit.gates k))).`3 < size rp0{2} by by move : H2; rewrite /valid_inputs //= /valid_circuit //=; move : (multiplication_wr_gid_bound c1{2}.`Circuit.topo c1{2}.`Circuit.gates k) => /#) => //=.
+          (have ->: k < size rp0{2} by smt()) => //=.
+smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+        wp; skip; progress.
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+smt().
+smt().
+smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+smt().
+(*smt().
+smt().
+smt().
+smt().
+smt().
+
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //=; smt().
+rewrite !size_cat //=; smt().
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= !size_cat //=; smt().
+move : H36; rewrite !nth_cat !size_cat //=; progress.
+case (k < size rp0_L + 1); progress.
+case (k < size rp0_L); progress.
+smt().
+smt(@FDistr @Dexcepted).
+smt(@FDistr @Dexcepted).*)
+move : (H12 k).
+have ->: 0 <= k < size rp0_R.
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+smt().
+smt().
+smt().
+move : (H16 k).
+have ->: 0 <= k < size rp0_R.
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+have ->: is_multiplication
+   (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`gates k)).
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+smt().
+
+(*simplify.
+progress.
+rewrite !nth_cat.
+rewrite !size_cat //=.
+have ->: k < size rp0_L + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+simplify.
+have ->: k < size rp0_L by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+simplify.
+have ->: k < size rp0_R + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+simplify.
+have ->: k < size rp0_R by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+simplify.
+smt().
+
+move : H36.
+rewrite !size_cat //=.
+rewrite !nth_cat.
+rewrite !size_cat //=.
+progress.
+case (k < size rp0_L + 1); progress.
+case (k < size rp0_L); progress.
+have ->: k < size rp0_R + 1 by smt().
+have ->: k < size rp0_R by smt().
+simplify.
+smt().
+have ->: k - size rp0_L = 0 by smt().
+have ->: k < size rp0_R + 1 by smt().
+have ->: k < size rp0_R <=> false by smt().
+simplify.
+have ->: k - size rp0_R = 0 by smt().
+smt().
+have ->: k - (size rp0_L + 1) = 0 by smt().
+have ->: k < size rp0_R + 1 <=> false by smt().
+have ->: k - size rp0_R = 0 <=> false by smt().
+simplify.
+have ->: k - (size rp0_R + 1) = 0 by smt().
+simplify.
+done.
+
+move : H36.
+rewrite !size_cat //=.
+rewrite !nth_cat.
+rewrite !size_cat //=.
+progress.
+case (k < size rp0_L + 1); progress.
+case (k < size rp0_L); progress.
+have ->: k < size rp0_R + 1 by smt().
+have ->: k < size rp0_R by smt().
+simplify.
+smt().
+have ->: k - size rp0_L = 0 by smt().
+have ->: k < size rp0_R + 1 by smt().
+have ->: k < size rp0_R <=> false by smt().
+simplify.
+have ->: k - size rp0_R = 0 by smt().
+smt().
+have ->: k - (size rp0_L + 1) = 0 by smt().
+have ->: k < size rp0_R + 1 <=> false by smt().
+have ->: k - size rp0_R = 0 <=> false by smt().
+simplify.
+have ->: k - (size rp0_R + 1) = 0 by smt().
+simplify.
+ringeq.
+
+rewrite !nth_cat.
+rewrite !size_cat //=.
+progress.
+have ->: get_gid
+                 (as_multiplication
+                    (odflt (def_gate c0{1}.`Circuit.topo)
+                       (get_gate c0{1}.`gates k))).`2 <
+               size rp0_L + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: get_gid
+                   (as_multiplication
+                      (odflt (def_gate c0{1}.`Circuit.topo)
+                         (get_gate c0{1}.`gates k))).`2 <
+                 size rp0_L by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: get_gid
+                 (as_multiplication
+                    (odflt (def_gate c0{1}.`Circuit.topo)
+                       (get_gate c0{1}.`gates k))).`3 <
+               size rp0_L + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: get_gid
+                   (as_multiplication
+                      (odflt (def_gate c0{1}.`Circuit.topo)
+                         (get_gate c0{1}.`gates k))).`3 <
+                 size rp0_L by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: k < size rp0_R + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+have ->: k < size rp0_R by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+simplify.
+have ->: get_gid
+                 (as_multiplication
+                    (odflt (def_gate c0{1}.`Circuit.topo)
+                       (get_gate c0{1}.`gates k))).`2 <
+               size rp0_R + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: get_gid
+                   (as_multiplication
+                      (odflt (def_gate c0{1}.`Circuit.topo)
+                         (get_gate c0{1}.`gates k))).`2 <
+                 size rp0_R by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: get_gid
+                 (as_multiplication
+                    (odflt (def_gate c0{1}.`Circuit.topo)
+                       (get_gate c0{1}.`gates k))).`3 <
+               size rp0_R + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: get_gid
+                   (as_multiplication
+                      (odflt (def_gate c0{1}.`Circuit.topo)
+                         (get_gate c0{1}.`gates k))).`3 <
+                 size rp0_R by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: k < size rp0_L + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+have ->: k < size rp0_L by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt(mem_gid_range).
+simplify.
+have ->: c0{1} = c1{2}.
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+move : (H16 k).
+have ->: 0 <= k < size rp0_R by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: is_multiplication
+   (odflt (def_gate c1{2}.`Circuit.topo) (get_gate c1{2}.`gates k))
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify; progress.
+smt().*)
 (*********************************************************)
 
 
+(*wp.
+(* b' isomorphism *)
+      rnd (fun r => fsub r (fsub (fadd (fmul a_final_const{2} (eval_gates gg{1} inst{1} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid gg{1})).`a fone)) fzero)) 
+          (fun r => fadd r (fsub (fadd (fmul a_final_const{2} (eval_gates gg{1} inst{1} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid gg{1})).`a fone)) fzero)).
+      (* a' isomorphism *)
+      rnd (fun r => fsub r (fsub (fmul a_final_const{1} (nth def_ui rp0{2} (get_gid gg{1})).`a) (fmul a_final_const{1} (nth def_ui rp0{2} (get_gid gg{1})).`a))) 
+          (fun r => fadd r (fsub (fmul a_final_const{2} (nth def_ui rp0{2} (get_gid gg{1})).`a) (fmul a_final_const{1} (nth def_ui rp0{2} (get_gid gg{1})).`a))).
+      (* b isomorphism *)
+      rnd (fun r => fsub r (eval_gate (get_gid gg{1}) gg{1} inst{1} ret{2}.`1.`1)) 
+          (fun r => fadd r (eval_gate (get_gid gg{1}) gg{1} inst{1} ret{2}.`1.`1)).
+      rnd; wp; rnd; rnd.
+      (* b isomorphism *)
+      rnd (fun r => fsub r fone) (fun r => fadd r fone).
+      rnd. *)
+
+
+(*********************************************************)
+rcondt{1} 15.
+move => &m; progress.
+auto; progress.
+rewrite /valid_rand_prover //=.
+move : H H0 H1 H2 H7 H10.
+elim (ret{m}) => xp xv //=.
+progress.
+rewrite !size_cat //=.
+smt().
+move : H20.
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+progress.
+smt(@FDistr @Dexcepted).
+
+rcondt{2} 22.
+move => &m; progress.
+auto; progress.
+call (_ : true).
+wp.
+call (_ : true).
+wp.
+rnd.
+wp.
+(* b' isomorphism *)
+      rnd (fun r => fsub r (fsub (fadd (fmul a_final_const{2} (eval_gates gg{1} inst{1} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid gg{1})).`a fone)) fzero)) 
+          (fun r => fadd r (fsub (fadd (fmul a_final_const{2} (eval_gates gg{1} inst{1} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid gg{1})).`a fone)) fzero)).
+      (* a' isomorphism *)
+      rnd (fun r => fsub r (fsub (fmul a_final_const{1} (nth def_ui rp0{2} (get_gid gg{1})).`a) (fmul a_final_const{1} (nth def_ui rp0{2} (get_gid gg{1})).`a))) 
+          (fun r => fadd r (fsub (fmul a_final_const{2} (nth def_ui rp0{2} (get_gid gg{1})).`a) (fmul a_final_const{1} (nth def_ui rp0{2} (get_gid gg{1})).`a))).
+      (* b isomorphism *)
+      rnd (fun r => fsub r (eval_gate (get_gid gg{1}) gg{1} inst{1} ret{2}.`1.`1)) 
+          (fun r => fadd r (eval_gate (get_gid gg{1}) gg{1} inst{1} ret{2}.`1.`1)).
+      rnd; wp; rnd; rnd.
+      (* b isomorphism *)
+      rnd (fun r => fsub r fone) (fun r => fadd r fone).
+      rnd.
+wp; skip; progress.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+ringeq.
+by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+rewrite /commit //=.
+move : H H0 H1 H2 H7 H10.
+rewrite /valid_inputs //=.
+elim (ret{2}) => xp xv //=.
+progress.
+move : H0.
+have : exists w, xp = (w, (c0{1}, inst{1})).
+exists xp.`1.
+smt().
+progress.
+print gen_z_cat.
+rewrite /add_final_mul //=.
+do split.
+
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{1} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{1} + 1) = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{2} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{2} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+smt(@PrimeField @ArithmeticCircuit).
+
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{1} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{1} + 1) = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{2} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{2} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+smt(@PrimeField @ArithmeticCircuit).
+
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{1} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates < size rp0{1} + 1 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates < size rp0{1} <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates - size rp0{1} = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid c0{2}.`gates < size rp0{1} + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid c0{2}.`gates < size rp0{1} by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+         c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{1} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{2} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates < size rp0{2} + 1 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates < size rp0{2} <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates - size rp0{2} = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid c0{2}.`gates < size rp0{2} + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid c0{2}.`gates < size rp0{2} by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+         c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{2} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+ringeq.
+
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates < size rp0{1} <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates < size rp0{1} + 1 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates - size rp0{1} = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates < size rp0{2} + 1 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+      c0{2}.`Circuit.topo.`ngates < size rp0{2} <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+               c0{2}.`Circuit.topo.`ngates - size rp0{2} = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+ringeq.
+
+rewrite (gen_z_cat rp0{1} c0{2}.`topo c0{2}.`gates c0{2}.`out_wires inst{2} w) 1,2:/#.
+rewrite (gen_z_sim_cat rp0{2} c0{2}.`topo c0{2}.`gates c0{2}.`out_wires inst{2}) 1,2:/#.
+by rewrite (isomorphism_eq c0{2}.`topo c0{2}.`gates rp0{1} c0{2}.`out_wires rp0{2} inst{2} w) => // /#.
+
+rewrite /get_a //= !nth_cat //= !size_cat //=.
+have ->: get_gid (add_final_mul c0{2}).`gates < size rp0{1} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid (add_final_mul c0{2}).`gates - (size rp0{1} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid (add_final_mul c0{2}).`gates < size rp0{2} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+have ->: get_gid (add_final_mul c0{2}).`gates - (size rp0{2} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+simplify.
+done.
+
+rewrite /generate_correlated_randomness //=.
+rewrite !map_cat //=.
+admit.
+
+(*********************************************************)
 inline*.
 call (_ : true).
 wp.

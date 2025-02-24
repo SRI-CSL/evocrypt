@@ -179,6 +179,12 @@ axiom ofintS (n:int): Int.(<=) 0 n => ofint (Int.(+) n 1) = fadd (ofint n) fone.
 (** Conversion of negative integers *)
 axiom ofintN (n:int): ofint (Int.([-]) n) = fumin (ofint n).
 
+lemma ofint1 : ofint 1 = fone.
+proof.
+  have ->: 1 = 0 + 1 by smt().
+  by rewrite ofintS => //=; rewrite ofint0 addC addf0.
+qed.
+
 (** Conversion of negative integers *)
 axiom toint_bounded (x:t): 0 <= toint x < q.
 (** Cancelation property: converting a field element to an integer and then back to a field
@@ -262,67 +268,67 @@ instance field with t
   proof ofintN    by smt.
 
 (** Auxiliar lemma, proving that [x - x = 0] *)
-lemma nosmt subff (x:t): (fsub x x) = fzero
+lemma  subff (x:t): (fsub x x) = fzero
 by ringeq.
 
 (** Auxiliar lemma, proving that [0 + x = x] *)
-lemma nosmt add0f (x:t): fadd fzero x = x
+lemma  add0f (x:t): fadd fzero x = x
 by ringeq.
 
 (** Auxiliar lemma, proving that [0x = 0] *)
-lemma nosmt mulf0 (x:t): fmul x fzero = fzero
+lemma  mulf0 (x:t): fmul x fzero = fzero
 by ringeq.
 
-lemma nosmt mul0f (x:t): fmul fzero x = fzero
+lemma  mul0f (x:t): fmul fzero x = fzero
 by ringeq.
 
 (** Auxiliar lemma, proving that [1x = x] *)
-lemma nosmt mul1f (x:t): fmul fone x = x
+lemma  mul1f (x:t): fmul fone x = x
 by ringeq.
 
 (** Auxiliar lemma, proving that [-xy = -(xy)] *)
-lemma nosmt mulNf (x y:t): fmul (fumin x) y = fumin (fmul x y)
+lemma  mulNf (x y:t): fmul (fumin x) y = fumin (fmul x y)
 by ringeq.
 
 (** Auxiliar lemma, proving that [y . -x = - (yx)] *)
-lemma nosmt mulfN (x y:t): fmul y (fumin x) = fumin (fmul y x)
+lemma  mulfN (x y:t): fmul y (fumin x) = fumin (fmul y x)
 by ringeq.
 
 (** Auxiliar lemma, proving that [-(-x) = x] *)
-lemma nosmt oppK (x:t): fumin (fumin x) = x
+lemma  oppK (x:t): fumin (fumin x) = x
 by ringeq.
 
 (** Auxiliar lemma, proving that [xy - xz = x (y - z)] *)
-lemma nosmt mulfNl (x y z:t): fsub (fmul x y) (fmul x z) = fmul x (fsub y z)
+lemma  mulfNl (x y z:t): fsub (fmul x y) (fmul x z) = fmul x (fsub y z)
 by ringeq.
 
 (** Auxiliar lemma, proving that [-1x = -x] *)
-lemma nosmt mulN1f (x:t): fmul (fumin fone) x = fumin x
+lemma  mulN1f (x:t): fmul (fumin fone) x = fumin x
 by ringeq.
 
 (** Auxiliar lemma, proving that [-x + -y = - (x + y)] *)
-lemma nosmt oppfD (x y:t): fadd (fumin x) (fumin y) = fumin (fadd x y)
+lemma  oppfD (x y:t): fadd (fumin x) (fumin y) = fumin (fadd x y)
 by ringeq.
 
 (** Auxiliar lemma, proving that all field elements are bigger than or equal to 0 *)
-lemma nosmt toint_pos (x:t): 0 <= toint x
+lemma  toint_pos (x:t): 0 <= toint x
 by smt.
 
 (** Auxiliar lemma, proving that all field elements are smaller than **q** *)
-lemma nosmt toint_lt (x:t): toint x < q
+lemma  toint_lt (x:t): toint x < q
 by smt.
 
 (** Auxiliar lemma, proving that all field elements are smaller than or equal to **q - 1** *)
-lemma nosmt toint_le (x:t): toint x <= q - 1
+lemma  toint_le (x:t): toint x <= q - 1
 by smt.
 
 (** Auxiliar lemma, proving that if an integer is between the range [0; q[, then converting
     it to a finite field and then back to an integer yields the original value *)
-lemma nosmt toofint (x:int): 0 <= x => x < q => toint (ofint x) = x.
+lemma  toofint (x:int): 0 <= x => x < q => toint (ofint x) = x.
 proof. by move=> Hp Hlt; rewrite toofint_mod IntDiv.modz_small /#. qed.
 
 (** Converting the integer 1 yields the finite field element **fone** *)
-lemma nosmt ofint1_: ofint 1 = fone by smt.
+lemma  ofint1_: ofint 1 = fone by smt.
 
 (** 
   Probability distribution over finite field elements 
@@ -434,7 +440,15 @@ qed.
 lemma div_mul_eq (x y w z a : t) : 
   x <> fzero =>
   (fdiv y x = z) = (y = fmul z x).
-proof. by move => *; smt. qed.
+proof. 
+  move => *. 
+case (fdiv y x = z); progress => //=.
+have ->: true = (y = fmul (fdiv y x) x) <=> y = fmul (fdiv y x) x.
+smt().
+ringeq.
+smt.
+smt.
+qed.
 
 (* -------------------------------------------------------------------- *)
 (** Auxiliar lemma, proving that equation [(x - y) / (z - w) = a] can be transformed into 
