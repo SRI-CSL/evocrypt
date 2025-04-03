@@ -42,7 +42,7 @@ theory ZeroKnowledge.
       execution or from a simulator *)
   module type Distinguisher_t = {
     proc init() : prover_input_t * verifier_input_t * correlation_term_t
-    proc guess(_ : (verifier_rand_t * trace_t) option) : bool
+    proc guess(_ : (correlated_randomness_t * trace_t) option) : bool
   }.
 
   (** Malicious verifier type. A malicious verifier is able to produce a decision given the
@@ -55,14 +55,14 @@ theory ZeroKnowledge.
       trace, given the inputs to the protocol and the appropriate prover randomness *)
   module type Evaluator_t = {
     proc init(x : prover_input_t * verifier_input_t * correlation_term_t) : unit
-    proc eval() : (verifier_rand_t * trace_t) option
+    proc eval() : (correlated_randomness_t * trace_t) option
   }.
 
   (** Simulator type. A simulator should be able to *simulate* a commitment, given only the 
       prover randomness and the statement (i.e., without knowing the witness) *)
   module type Simulator_t = {
     proc init(x : statement_t, alpha : correlation_term_t) : unit
-    proc gen_commitment() : (verifier_rand_t * commitment_t) option
+    proc gen_commitment() : (correlated_randomness_t * commitment_t) option
   }.
 
   (** Real evaluator module. In this module, an execution of the protocol with a dishonest
@@ -75,7 +75,7 @@ theory ZeroKnowledge.
       xp <- x.`1;
       alpha <- x.`3;
     }
-    proc eval() : (verifier_rand_t * trace_t) option = {
+    proc eval() : (correlated_randomness_t * trace_t) option = {
       var c, b, r, rp, rv;
 
       r <- None;
@@ -104,7 +104,7 @@ theory ZeroKnowledge.
       xp <- x.`1;
     }
 
-    proc eval() : (verifier_rand_t * trace_t) option = {
+    proc eval() : (correlated_randomness_t * trace_t) option = {
       var c, b, ret, oc, rv;
 
       ret <- None;
@@ -121,7 +121,7 @@ theory ZeroKnowledge.
   (** Zero-knowledge cryptographic experience *)
   module ZKGame (D : Distinguisher_t) (E : Evaluator_t) = {
     proc main() : bool = {
-      var xp, xv, v, b', alpha;
+      var xp, xv, b', alpha, v;
 
       (xp, xv, alpha) <@ D.init();
       v <- None;

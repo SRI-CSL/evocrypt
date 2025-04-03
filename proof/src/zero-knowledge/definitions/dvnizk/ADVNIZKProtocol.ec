@@ -75,7 +75,7 @@ theory DVNIZKProtocol.
       designated verifier protocols can have different randomness correlated assumptions. *)
   op is_correlated_randomness : (prover_rand_t * verifier_rand_t) -> bool.
 
-  op generate_correlated_randomness : prover_rand_t -> correlation_term_t -> verifier_rand_t.
+  op generate_correlated_randomness : prover_rand_t -> correlation_term_t -> correlated_randomness_t.
 
   (** Prover output type. At the end of the protocol, the prover has no output *)
   type prover_output_t = unit. 

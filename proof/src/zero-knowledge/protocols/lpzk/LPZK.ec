@@ -147,8 +147,8 @@ theory LPZK.
     (forall k, 0 <= k < size y => 
       (nth def_yi y k).`v' = fadd (fmul alpha (nth def_ui rp k).`a') (nth def_ui rp k).`b').
 
-  op generate_correlated_randomness (rp : prover_rand_t) (alpha : correlation_term_t) : verifier_rand_t = 
-    (alpha, map (fun x => {| v = fadd (fmul x.`a alpha) x.`b ; v' = fadd (fmul x.`a' alpha) x.`b' |}) rp).
+  op generate_correlated_randomness (rp : prover_rand_t) (alpha : correlation_term_t) : correlated_randomness_t = 
+    map (fun x => {| v = fadd (fmul x.`a alpha) x.`b ; v' = fadd (fmul x.`a' alpha) x.`b' |}) rp.
 
   (** Prover output type. At the end of the protocol, the prover has no output *)
   type prover_output_t = unit. 
@@ -1469,6 +1469,279 @@ qed.
 
   section ZeroKnowledge.
 
+    module RP : RandP_t = {
+      proc gen(x : statement_t) : prover_rand_t = {
+        var c, inst, topo, gg, rp;
+        var a, b, a', b';
+        var a_final_const, b_final_const, a'_final_const, b'_final_const;
+        var a_final_mul, b_final_mul, a'_final_mul, b'_final_mul;
+        var i;
+        
+        (c, inst) <- x;
+        topo <- c.`topo;
+        gg <- c.`gates;
+
+        rp <- [];
+
+        i <- 0;
+        while (i < topo.`npinputs + topo.`nsinputs + topo.`ngates) {
+          a <$ (FDistr.dt \ ((=)fzero));
+          b <$ FDistr.dt;
+          a' <$ FDistr.dt;
+          b' <$ FDistr.dt;
+          rp <- rp ++ [{| a = a ; b = b ; a' = a' ; b' = b' |}];
+  
+          i <- i + 1;
+        }
+        (*rp <- process_rand rp gg;*)
+
+        (* sample randomness for final constant gate *)
+        a_final_const <$ (FDistr.dt \ ((=)fzero));
+        b_final_const <$ FDistr.dt;
+        a'_final_const <$ FDistr.dt;
+        b'_final_const <$ FDistr.dt;
+
+        rp <- rp ++ [{| a = a_final_const ; b = b_final_const ; a' = a'_final_const ; b' = b'_final_const |}];
+
+        (* sample randomness for final multiplication gate *)
+        a_final_mul <$ (FDistr.dt \ ((=)fzero));
+        b_final_mul <$ FDistr.dt;
+        a'_final_mul <$ FDistr.dt;
+        b'_final_mul <$ FDistr.dt;
+
+        rp <- rp ++ [{| a = a_final_mul ; b = b_final_mul ; a' = a'_final_mul ; b' = b'_final_mul |}];
+
+        return rp;
+      }
+    }.
+
+    (** First hop: up-to bad argument *)
+    module ZKGame1 (D : Distinguisher_t) (E : Evaluator_t) = {
+      var bad : bool
+
+      proc main() : bool = {
+        var xp, xv, b', alpha, v;
+
+        (xp, xv, alpha) <@ D.init();
+        v <- None;
+        if (valid_inputs (xp, xv) /\ valid_correlation_term alpha) {
+          E.init(xp, xv, alpha);
+          v <@ E.eval();
+        }
+
+        bad <- alpha = fzero;
+        if (!bad) { b' <@ D.guess(v); }
+        else { b' <- false; }
+
+        return b';
+      }
+    }.
+
+    module D1 (D : Distinguisher_t) : Distinguisher_t = {
+      proc init() : prover_input_t * verifier_input_t * correlation_term_t = {
+        var alpha, ret;
+        ret <@ D.init();
+        alpha <$ FDistr.dt;
+        return (ret.`1, ret.`2, alpha);
+      }
+
+      proc guess = D.guess
+    }.
+
+    module Sample = {
+      proc sample() : t = {
+        var alpha;
+        alpha <$ FDistr.dt;
+        return alpha;
+      }
+    }.
+
+    lemma sample_pr &m : Pr [Sample.sample() @ &m : res = fzero ] = (1%r / q%r).
+    proof.
+byphoare => //=.
+proc.
+rnd.
+skip; progress.
+have ->: mu FDistr.dt (fun (x : t) => x = fzero) = mu1 FDistr.dt fzero.
+smt(@Distr).
+rewrite FDistr.dt1E.
+done.
+qed.
+
+    lemma bad_pr &m (D <: Distinguisher_t{-RealEvaluator, -ZKGame1}) (RP <: RandP_t{-ZKGame1, -RealEvaluator}) (MV <: MVerifier_t{-D, -RealEvaluator, -ZKGame1, -RP}) :
+      islossless D.guess =>
+      islossless D.init =>
+      islossless RP.gen =>
+      islossless MV.prove =>
+      Pr[ ZKGame1(D1(D), RealEvaluator(RP, MV)).main() @ &m : ZKGame1.bad ] <= (1%r / q%r).
+proof.
+progress.
+have ->: inv q%r = Pr [Sample.sample() @ &m : res = fzero ].
+rewrite sample_pr.
+done.
+byequiv => //=.
+proc.
+inline*.
+seq 1 0 : (true).
+call{1} (_ : true ==> true).
+done.
+seq 1 1 : (alpha0{1} = alpha{2}).
+rnd.
+skip; progress.
+sp.
+if{1} => //=; last first.
+sp.
+if{1} => //=; last first.
+wp; skip; progress.
+call{1} (_ : true ==> true).
+done.
+sp.
+seq 1 0 : (#pre).
+call{1} (_ : true ==> true).
+wp; skip; progress.
+if{1} => //=; last first.
+sp.
+if{1} => //=; last first.
+wp; skip; progress.
+call{1} (_ : true ==> true).
+done.
+sp.
+seq 1 0 : (#pre).
+call{1} (_ : true ==> true).
+wp; skip; progress.
+sp.
+if{1} => //=; last first.
+wp; skip; progress.
+call{1} (_ : true ==> true).
+wp; skip; progress.
+qed.
+
+    lemma game_game1 (D <: Distinguisher_t{-RealEvaluator, -ZKGame1}) (MV <: MVerifier_t{-D, -RealEvaluator, -ZKGame1, -RP}) : 
+      islossless D.guess =>
+      equiv [ GameReal(D1(D), RP, MV).main ~ ZKGame1(D1(D), RealEvaluator(RP, MV)).main : ={glob D, glob MV, glob RP} ==> !ZKGame1.bad{2} => ={res} ].
+proof.
+progress.
+proc.
+inline*.
+seq 1 1 : (#pre /\ ={ret}).
+call (_ : true); skip; progress.
+seq 1 1 : (#pre /\ ={alpha0}).
+rnd; skip; progress.
+sp.
+if => //=; last first.
+sp.
+if{2} => //=.
+call (_ : true); skip; progress.
+call{1} (_ : true ==> true) => //=.
+wp; skip; progress.
+sp.
+seq 1 1 : (#[/1:8,11:18,21:]pre /\ ={rp0} /\ size rp0{1} = (topo.`npinputs + topo.`nsinputs + topo.`ngates){1} /\
+           forall k, 0 <= k < size rp0{1} => (nth def_ui rp0{1} k).`a <> fzero).
+while (#[/1:8,11:18,21:]pre /\ 0 <= i{1} <= (topo.`npinputs + topo.`nsinputs + topo.`ngates){1} /\
+                               ={rp0} /\ size rp0{1} = i{1} /\ ={i} /\
+                               forall k, 0 <= k < i{1} => (nth def_ui rp0{1} k).`a <> fzero).
+auto; progress.
+smt().
+smt().
+rewrite size_cat //=. 
+rewrite !nth_cat //=.
+case (k < size rp0{2}); progress.
+smt(@Distr @Dexcepted).
+have ->: k - size rp0{2} = 0 <=> true by smt() => //=.
+simplify.
+smt(@Distr @Dexcepted).
+move : H2. rewrite /valid_inputs //=. smt().
+move : H2. rewrite /valid_inputs //=. smt().
+skip; progress.
+move : H2. rewrite /valid_inputs //=. smt().
+smt().
+move : H2. rewrite /valid_inputs //=. smt().
+move : H2. rewrite /valid_inputs //=. smt().
+smt().
+rcondt{1} 12.
+progress.
+auto; progress.
+rewrite /valid_rand_prover //=.
+progress.
+rewrite !size_cat //=. smt(). 
+move : H16. rewrite !size_cat //=. rewrite !nth_cat //=. rewrite !size_cat //=. progress.
+case (k < size rp0{m} + 1); progress.
+case (k < size rp0{m}); progress.
+smt().
+have ->: k - size rp0{m} = 0 by 
+smt().
+simplify.
+smt(@Distr @Dexcepted).
+smt(@Distr @Dexcepted).
+rcondt{2} 12.
+progress.
+auto; progress.
+rewrite /valid_rand_prover //=.
+progress.
+rewrite !size_cat //=. smt(). 
+move : H16. rewrite !size_cat //=. rewrite !nth_cat //=. rewrite !size_cat //=. progress.
+case (k < size rp0{hr} + 1); progress.
+case (k < size rp0{hr}); progress.
+smt().
+have ->: k - size rp0{hr} = 0 by 
+smt().
+simplify.
+smt(@Distr @Dexcepted).
+smt(@Distr @Dexcepted).
+case (alpha{2} = fzero); last first.
+rcondt{2} 18. 
+progress.
+auto; progress.
+call (_ : true).
+auto; progress.
+call (_ : true).
+auto; progress.
+call (_ : true).
+auto; progress.
+rcondf{2} 18. 
+progress.
+auto; progress.
+call (_ : true).
+auto; progress.
+wp.
+call{1} (_ : true ==> true).
+auto; progress.
+call (_ : true).
+auto; progress.
+qed.
+
+    lemma game_game1_hop 
+
+
+
+
+
+
+
+
+
+
+
+
+
+(** Distinguisher declaration *)    
+    declare module D <: Distinguisher_t{-RealEvaluator, -Simulator, -IdealEvaluator}.
+    (** Malicious verifier declaration *)    
+    declare module MV <: MVerifier_t{-D, -RealEvaluator, -Simulator, -IdealEvaluator}.
+
+
+
+
+
+
+
+
+
+    (**)
+
+    (** Simulator module. The simulator will behave according to the [commit] operation, but
+        it will invoke the [gen_z_sim] operator (that assumes that all witness values are 0)
+        instead of the honest [gen_z] operator *)
     (** Simulator algorithm that computes the commitment message. The simulator that will execute
         following the exact same steps as the prover but that, because it has no access to the 
         witness, assumes that all witness values are zero *)
@@ -1520,6 +1793,43 @@ qed.
                              m' = fsub (fmul al ar) a' ;
                              c = fsub (fsub (fadd (fmul al wr) (fmul ar wl)) a) b' |}
                           (gen_z_sim u l xp) (gen_z_sim u r xp).
+
+    (*module Simulator : Simulator_t = {
+      var x : statement_t
+      var alpha : correlation_term_t
+
+      proc init(x_ : statement_t, alpha_ : correlation_term_t) : unit = {
+        x <- x_;
+        alpha <- alpha_;
+      }
+
+      proc gen_commitment() : (correlated_randomness_t * commitment_t) option = {
+        var c, inst, topo, gg, z, z', rp, rv;
+
+        (c, inst) <- x;
+        rp <@ RP.gen(x);
+        (*rv <$ dlist dcorrelated (size rp);*)
+        rv <- generate_correlated_randomness rp alpha;
+        (*rv <$ FDistr.dt `*` dlist dcorrelated (size rp);*)
+        c <- add_final_mul c;
+        topo <- c.`topo;
+        gg <- c.`gates;
+        z <- gen_z_sim rp gg inst;
+        z' <- (get_a rp gg);
+
+        return Some (rv, (z, z'));
+      }
+    }.*)
+
+
+
+
+
+
+
+
+
+
   
     (** Auxiliar lemma to be used in the induction proof. It proves that only the first
         [topo.`npinputs + topo.`nsinputs + topo.`ngates] random elements are required to produce 
@@ -1698,6 +2008,138 @@ done.
       size rp = size rp' => 
       size rp = topo.`nsinputs + topo.`npinputs + topo.`ngates =>
       (forall (k : gid_t), mem_gid k gg =>
+                           is_multiplication (odflt (def_gate topo) (get_gate gg k)) =>
+                           fsub (fmul (nth def_ui rp (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2)).`a (nth def_ui rp (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3)).`a) 
+                           (nth def_ui rp k).`a' =
+                           fsub (fmul (nth def_ui rp' (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2)).`a (nth def_ui rp' (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3)).`a)
+                           (nth def_ui rp' k).`a') =>
+      (forall (k : gid_t), mem_gid k gg =>
+                           fsub (eval_until gg inst w k) (nth def_ui rp k).`b =
+                           fsub fzero (nth def_ui rp' k).`b) =>
+      (forall (k : gid_t), mem_gid k gg  => 
+                           is_multiplication (odflt (def_gate topo) (get_gate gg k)) =>
+                           fsub (fsub (fadd (fmul (nth def_ui rp (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2)).`a (eval_gates (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3 inst w)) (fmul (nth def_ui rp (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3)).`a (eval_gates (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2 inst w))) (nth def_ui rp k).`a) (nth def_ui rp k).`b' = 
+                           fsub (fsub (fadd (fmul (nth def_ui rp' (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2)).`a fzero) (fmul (nth def_ui rp' (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3)).`a fzero)) (nth def_ui rp' k).`a) (nth def_ui rp' k).`b') =>
+      gen_z rp  gg inst w = gen_z_sim rp' gg inst.
+    proof.
+      progress. move : H H2 H3 H4; elim gg => //=.
+      (* Public input gate *)
+      by move => wid /#.
+      (* Secret input gate *)
+      by move => wid /#.
+      (* Constant gate *)
+      by move => gid c /#.
+      (* Addition gate *)
+      move => gid wl wr Hl Hr Hvalid Hind Hind2 Hind3; split; first by smt().
+split; first by rewrite Hl => //= /#.
+
+      rewrite Hr => //=; first by smt(). 
+      progress; move : (Hind k).
+      (have ->: gid = k <=> false by smt()) => //=.
+      (have ->: mem_gid k wl <=> false by smt()) => //=.
+      (have ->: get_gate wl k <> None <=> false by rewrite mem_gid_get_gateN => /#) => //=.
+      by rewrite H H2 /=.
+smt().
+progress.
+      progress; move : (Hind3 k).
+      (have ->: gid = k <=> false by smt()) => //=.
+      (have ->: mem_gid k wl <=> false by smt()) => //=.
+      (have ->: get_gate wl k <> None <=> false by rewrite mem_gid_get_gateN => /#) => //=.
+      by rewrite H H2 /=.
+      (* Multiplication gate *)
+      move => gid wl wr Hl Hr Hvalid Hind Hind2 Hind3; split.
+admit.
+
+split; first by move : (Hind gid) => /=; rewrite mulf0.
+split. smt.
+
+first by rewrite !H3; move : Hvalid; rewrite /valid_circuit /valid_gates /valid_topology /=; smt.
+by move : (Hind2 gid) => /=.
+      split; first by rewrite Hl => //= /#.
+      rewrite Hr => //=; first 2 by smt(). 
+      progress; move : (Hind2 k).
+      (have ->: gid = k <=> false by smt()) => //=.
+      (have ->: mem_gid k wl <=> false by smt()) => //=.
+      (have ->: get_gate wl k <> None <=> false by rewrite mem_gid_get_gateN => /#) => //=.
+      by rewrite H H2 /=.
+
+
+rewrite /generate_correlated_randomness //=.
+print eq_in_map.
+print eq_from_nth.
+rewrite (eq_from_nth def_yi (map
+  (fun (x : ui_t) =>
+     {| v = fadd (fmul x.`a alpha) x.`b; v' = fadd (fmul x.`a' alpha) x.`b'; |})
+  rp) (map
+  (fun (x : ui_t) =>
+     {| v = fadd (fmul x.`a alpha) x.`b; v' = fadd (fmul x.`a' alpha) x.`b'; |})
+  rp')).
+rewrite !size_map //=.
+rewrite !size_map //=.
+progress.
+rewrite !(nth_map def_ui) => //=.
+smt().
+split.
+have ->: (nth def_ui rp i).`b = fadd (eval_until gg inst w i) (nth def_ui rp i).`b'.
+move : (H2 i).
+have ->: mem_gid i gg.
+move : H; rewrite /valid_circuit //= /valid_topology /valid_gates /valid_out_wires //= /valid_input_gates /valid_constant_gates /valid_gids //=.
+progress.
+admit.
+progress.
+admit.
+
+ringeq.
+
+smt.
+
+smt(@PrimeField).
+smt().
+
+admit.
+smt.
+rewrite (eq_in_map )
+    qed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    lemma isomorphism_eq topo gg (rp : u_t) ys rp' inst w alpha : 
+      valid_circuit {| topo = topo ; gates = gg ; out_wires = ys |} => 
+      size rp = size rp' => 
+      size rp = topo.`nsinputs + topo.`npinputs + topo.`ngates =>
+      (forall (k : gid_t), mem_gid k gg =>
                            fsub (eval_until gg inst w k) (nth def_ui rp k).`b =
                            fsub fzero (nth def_ui rp' k).`b) =>
       (forall (k : int), 0 <= k < size rp =>
@@ -1708,9 +2150,10 @@ done.
                            is_multiplication (odflt (def_gate topo) (get_gate gg k)) =>
                            fsub (fsub (fadd (fmul (nth def_ui rp (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2)).`a (eval_gates (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3 inst w)) (fmul (nth def_ui rp (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3)).`a (eval_gates (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2 inst w))) (nth def_ui rp k).`a) (nth def_ui rp k).`b' = 
                            fsub (fsub (fadd (fmul (nth def_ui rp' (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`2)).`a fzero) (fmul (nth def_ui rp' (get_gid (as_multiplication (odflt (def_gate topo) (get_gate gg k))).`3)).`a fzero)) (nth def_ui rp' k).`a) (nth def_ui rp' k).`b') =>
-      gen_z rp  gg inst w = gen_z_sim rp' gg inst.
+      gen_z rp  gg inst w = gen_z_sim rp' gg inst /\
+      generate_correlated_randomness rp alpha = generate_correlated_randomness rp' alpha.
     proof.
-      progress; move : H H2 H5; elim gg => //=.
+      progress. move : H H2 H5; elim gg => //=.
       (* Public input gate *)
       by move => wid /#.
       (* Secret input gate *)
@@ -1739,81 +2182,47 @@ by move : (Hind2 gid) => /=.
       (have ->: mem_gid k wl <=> false by smt()) => //=.
       (have ->: get_gate wl k <> None <=> false by rewrite mem_gid_get_gateN => /#) => //=.
       by rewrite H H2 /=.
+
+
+rewrite /generate_correlated_randomness //=.
+print eq_in_map.
+print eq_from_nth.
+rewrite (eq_from_nth def_yi (map
+  (fun (x : ui_t) =>
+     {| v = fadd (fmul x.`a alpha) x.`b; v' = fadd (fmul x.`a' alpha) x.`b'; |})
+  rp) (map
+  (fun (x : ui_t) =>
+     {| v = fadd (fmul x.`a alpha) x.`b; v' = fadd (fmul x.`a' alpha) x.`b'; |})
+  rp')).
+rewrite !size_map //=.
+rewrite !size_map //=.
+progress.
+rewrite !(nth_map def_ui) => //=.
+smt().
+split.
+have ->: (nth def_ui rp i).`b = fadd (eval_until gg inst w i) (nth def_ui rp i).`b'.
+move : (H2 i).
+have ->: mem_gid i gg.
+move : H; rewrite /valid_circuit //= /valid_topology /valid_gates /valid_out_wires //= /valid_input_gates /valid_constant_gates /valid_gids //=.
+progress.
+admit.
+progress.
+admit.
+
+ringeq.
+
+smt.
+
+smt(@PrimeField).
+smt().
+
+admit.
+smt.
+rewrite (eq_in_map )
     qed.
 
-    module RP : RandP_t = {
-      proc gen(x : statement_t) : prover_rand_t = {
-        var c, inst, topo, gg, rp;
-        var a, b, a', b';
-        var a_final_const, b_final_const, a'_final_const, b'_final_const;
-        var a_final_mul, b_final_mul, a'_final_mul, b'_final_mul;
-        var i;
-        
-        (c, inst) <- x;
-        topo <- c.`topo;
-        gg <- c.`gates;
-
-        rp <- [];
-
-        i <- 0;
-        while (i < topo.`npinputs + topo.`nsinputs + topo.`ngates) {
-          a <$ (FDistr.dt \ ((=)fzero));
-          b <$ FDistr.dt;
-          a' <$ FDistr.dt;
-          b' <$ FDistr.dt;
-          rp <- rp ++ [{| a = a ; b = b ; a' = a' ; b' = b' |}];
-  
-          i <- i + 1;
-        }
-        (*rp <- process_rand rp gg;*)
-
-        (* sample randomness for final constant gate *)
-        a_final_const <$ (FDistr.dt \ ((=)fzero));
-        b_final_const <$ FDistr.dt;
-        a'_final_const <$ FDistr.dt;
-        b'_final_const <$ FDistr.dt;
-
-        rp <- rp ++ [{| a = a_final_const ; b = b_final_const ; a' = a'_final_const ; b' = b'_final_const |}];
-
-        (* sample randomness for final multiplication gate *)
-        a_final_mul <$ (FDistr.dt \ ((=)fzero));
-        b_final_mul <$ FDistr.dt;
-        a'_final_mul <$ FDistr.dt;
-        b'_final_mul <$ FDistr.dt;
-
-        rp <- rp ++ [{| a = a_final_mul ; b = b_final_mul ; a' = a'_final_mul ; b' = b'_final_mul |}];
-
-        return rp;
-      }
-    }.
-
-    (** Simulator module. The simulator will behave according to the [commit] operation, but
-        it will invoke the [gen_z_sim] operator (that assumes that all witness values are 0)
-        instead of the honest [gen_z] operator *)
-    module Simulator : Simulator_t = {
-      var x : statement_t
-      var alpha : correlation_term_t
-
-      proc init(x_ : statement_t, alpha_ : correlation_term_t) : unit = {
-        x <- x_;
-        alpha <- alpha_;
-      }
-
-      proc gen_commitment() : (verifier_rand_t * commitment_t) option = {
-        var c, inst, topo, gg, z, z', rp, rv;
-
-        (c, inst) <- x;
-        rp <@ RP.gen(x);
-        rv <- generate_correlated_randomness rp alpha;
-        c <- add_final_mul c;
-        topo <- c.`topo;
-        gg <- c.`gates;
-        z <- gen_z_sim rp gg inst;
-        z' <- (get_a rp gg);
-
-        return Some (rv, (z, z'));
-      }
-    }.
+    op dt2 : (t * t) distr = FDistr.dt `*` FDistr.dt.
+    op dcorrelated = dmap dt2 (fun x => {| v = fst x ; v' = snd x |}).
 
     (** Proves that if a multiplication gate is valid, then the left wire is also going to be 
         valid *)
@@ -1869,11 +2278,6 @@ by move : (Hind2 gid) => /=.
       by move : H H1 H2; elim gg => // /#.
     qed.
 
-    (** Distinguisher declaration *)    
-    declare module D <: Distinguisher_t{-RealEvaluator, -Simulator, -IdealEvaluator}.
-    (** Malicious verifier declaration *)    
-    declare module MV <: MVerifier_t{-D, -RealEvaluator, -Simulator, -IdealEvaluator}.
-
     module D1 : Distinguisher_t = {
       proc init() : prover_input_t * verifier_input_t * correlation_term_t = {
         var alpha, ret;
@@ -1884,6 +2288,244 @@ by move : (Hind2 gid) => /=.
 
       proc guess = D.guess
     }.
+
+    module TestSample = {
+      proc correlated(r : prover_rand_t) = {
+        var alpha;
+        alpha <$ FDistr.dt;
+        return (generate_correlated_randomness r alpha).`2;
+      }
+
+      proc rand_gen(r : prover_rand_t) = {
+        var ret;
+        (*ret <$ FDistr.dt `*` dlist dcorrelated (size r);*)
+        (*ret <$ dlet FDistr.dt (fun x => generate_correlated_randomness r x);*)
+        ret <$ dlist dcorrelated (size r);
+        (*ret <$ djoin (map (fun x => {FDistr.dt) r);*)
+        (*ret <$ dlist dcorrelated (size r);*)
+        (*ret <$ FDistr.dt;*)
+        (*return (generate_correlated_randomness r ret).`2;*)
+        return ret;
+      }
+    }.
+
+  lemma test1 _r &m alpha: 0 <= size _r => Pr[TestSample.correlated(_r) @ &m: res = (generate_correlated_randomness _r alpha).`2] = mu (dlist dcorrelated (size _r)) (pred1 (generate_correlated_randomness _r alpha).`2).
+  proof. progress; byphoare (_: r = _r ==> res = (generate_correlated_randomness _r alpha).`2)=> //=; proc; rnd. 
+skip; progress.
+rewrite /generate_correlated_randomness //=.
+smt.
+smt.
+rewrite dlist1E.
+done.
+rewrite /generate_correlated_randomness //=.
+rewrite size_map //=.
+
+
+qed.
+
+  equiv Sample_SampleCons_eq: Sample.sample ~ SampleCons.sample: 0 < n{1} /\ ={n} ==> ={res}.
+  proof.
+    bypr (res{1}) (res{2})=> //= &1 &2 xs [lt0_n] <-.
+    rewrite (pr_Sample n{1} &1 xs); case (size xs = n{1})=> [<<-|].
+      case xs lt0_n=> [|x xs lt0_n]; 1: smt().
+      rewrite dlistS1E.
+      byphoare (_: n = size xs + 1 ==> x::xs = res)=> //=; 2: by rewrite addrC. 
+      proc; seq 1: (rs = xs) (mu (dlist d (size xs)) (pred1 xs)) (mu d (pred1 x)) _ 0%r => //.
+        by rnd (pred1 xs); skip; smt().
+        by rnd (pred1 x); skip; smt().
+        by hoare; auto; smt().
+        smt().
+    move=> len_xs; rewrite dlist1E 1:/# ifF 1:/#.
+    byphoare (_: n = n{1} ==> xs = res)=> //=; hoare.
+    proc; auto=> />; smt(supp_dlist_size).
+  qed.
+
+
+
+(*a * x + b
+a1 * x + b1*)
+
+
+
+
+    lemma test : equiv [ TestSample.correlated ~ TestSample.rand_gen : 
+      0 <= size r{2} /\ 
+      size r{1} = size r{2} 
+      ==> ={res} ].
+    proof.
+proc.
+rnd (fun y => map (fun (x : ui_t) => {| v = fadd (fmul x.`a y) x.`b; v' = fadd (fmul x.`a' y) x.`b'; |}) r{1})
+    (fun y => fdiv (fsub (nth def_yi y 0).`v (nth def_ui r{1} 0).`b) (nth def_ui r{1} 0).`a).
+skip; progress.
+move : H1; rewrite supp_dlist //=.
+rewrite allP //=.
+progress.
+have : forall k, 0 <= k < size retR => exists v v', v \in FDistr.dt => v' \in FDistr.dt => nth def_yi retR k = {| v = v; v' = v'|}.
+progress.
+admit.
+progress.
+rewrite (eq_from_nth witness retR (map
+  (fun (x : ui_t) =>
+     {| v =
+         fadd
+           (fmul x.`a
+              (fdiv (fsub (nth def_yi retR 0).`v (nth def_ui r{1} 0).`b)
+                 (nth def_ui r{1} 0).`a)) x.`b; v' =
+         fadd
+           (fmul x.`a'
+              (fdiv (fsub (nth def_yi retR 0).`v (nth def_ui r{1} 0).`b)
+                 (nth def_ui r{1} 0).`a)) x.`b'; |}) r{1})).
+rewrite size_map //=.
+smt().
+progress.
+rewrite (nth_map witness).
+smt().
+simplify.
+smt tm=60.
+
+move : H2.
+rewrite supp_dlist.
+smt().
+smt().
+progress.
+rewrite (nth_map witness).
+move : H3.
+rewrite supp_dlist.
+smt().
+smt().
+simplify.
+
+
+
+smt.
+
+
+
+admit.
+rewrite (eq_from_nth witness retR (map
+  (fun (x : ui_t) =>
+     {| v =
+         fadd
+           (fmul x.`a
+              (fdiv (fsub (nth def_yi retR k0).`v (nth def_ui r{1} k0).`b)
+                 (nth def_ui r{1} k0).`a)) x.`b; v' =
+         fadd
+           (fmul x.`a'
+              (fdiv (fsub (nth def_yi retR k0).`v (nth def_ui r{1} k0).`b)
+                 (nth def_ui r{1} k0).`a)) x.`b'; |}) r{1})).
+rewrite size_map //=.
+move : H3.
+rewrite supp_dlist.
+smt().
+smt().
+progress.
+rewrite (nth_map witness).
+move : H3.
+rewrite supp_dlist.
+smt().
+smt().
+simplify.
+case (k0 = i); progress.
+have ->: (fmul (nth witness r{1} i).`a
+         (fdiv (fsub (nth def_yi retR i).`v (nth def_ui r{1} i).`b)
+            (nth def_ui r{1} i).`a)) = (fsub (nth def_yi retR i).`v (nth def_ui r{1} i).`b).
+admit.
+have ->: fadd (fsub (nth def_yi retR i).`v (nth def_ui r{1} i).`b)
+      (nth witness r{1} i).`b = (nth def_yi retR i).`v.
+ringeq.
+smt.
+admit.
+
+smt tmo=60.
+
+
+have ->: fadd
+      (fmul (nth witness r{1} i).`a
+         (fdiv (fsub (nth def_yi retR i).`v (nth def_ui r{1} i).`b)
+            (nth def_ui r{1} i).`a)) (nth witness r{1} i).`b = (nth def_yi retR i).`v.
+smt(@PrimeField).
+smt.
+
+
+smt(@DInterval).
+rewrite /generate_correlated_randomness.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+skip; progress.
+print eq_from_nth.
+rewrite (eq_from_nth witness retR (map
+  (fun (x : ui_t) =>
+     {| v =
+         fadd
+           (fmul x.`a
+              (fdiv (fsub (head def_yi retR).`v (head def_ui r{1}).`b)
+                 (head def_ui r{1}).`a)) x.`b; v' =
+         fadd
+           (fmul x.`a'
+              (fdiv (fsub (head def_yi retR).`v (head def_ui r{1}).`b)
+                 (head def_ui r{1}).`a)) x.`b'; |}) r{1})).
+rewrite size_map //=.
+move : H1.
+rewrite supp_dlist.
+smt().
+smt().
+progress.
+rewrite (nth_map witness).
+move : H1.
+rewrite supp_dlist.
+smt().
+smt().
+simplify.
+
+a * ((v - b) / a) + b
+
+
+    (*(fun r => fdiv (fsub (head def_yi r).`v (head def_ui rp{2}).`b) (head def_ui rp{2}).`a)
+skip; progress.
+admit.
+search (mu1 (_ `*` _) _).
+have ->: retR = (retR.`1, retR.`2) by smt().
+rewrite dprod1E.
+print dlist1E.
+rewrite (dlist1E dcorrelated (size r{2}) retR.`2).
+smt().
+simplify.
+have ->: size r{2} = size retR.`2.
+admit.
+simplify.
+smt.
+
+dlet
+
+move : H1.
+rewrite supp_dprod supp_dlist.
+smt().
+rewrite allP //=.
+rewrite /dcorrelated //=.
+progress.
+rewrite /generate_correlated_randomness.
+progress.
+have ->: retR.`2
+
+
+have : forall k, 0 <= k < size r{2} => exists ()
+smt.
+
+
+
+
 
     lemma valid_circuit_add_final_mul c : 
       valid_circuit c =>
@@ -1929,6 +2571,9 @@ smt().
 smt().
 smt().
 qed.
+
+    lemma head_cat (s s' : 'a list) (z : 'a) : s <> [] => head z (s ++ s') = head z s.
+    proof. smt(@List). qed.
 
     (** Zero-knowledge lemma, according to the zero-knowledge game of the 
         *ZeroKnowledgeDVNIZKP.ec* file. We prove that if the witness and the statement are in the
@@ -2107,7 +2752,7 @@ while (#[/1:10,13:18,21:]pre /\ ={i} /\ size rp0{2} = i{2} /\ size rp0{1} = size
 
 rewrite !nth_cat //=.
 case (k = size rp0{1}); progress.
-smt.
+smt(@Distr @Dexcepted).
 smt().
 
           rewrite !nth_cat /=.
@@ -2411,7 +3056,26 @@ call (_ : true).
 wp.
 call (_ : true).
 wp.
-rnd.
+
+rnd (fun x => generate_correlated_randomness rp0{1} x) (fun x => fst x).
+
+(*iteri (fun i x => (r[i] - rp[i].b) / rp[i].a) 
+
+foldr (fun x => )
+
+a * x + b
+a1 * x + b1
+
+how to get x?
+
+*)
+
+
+(*rnd (fun r => map (fun (x : ui_t) => {| v = fadd (fmul x.`a r) x.`b; v' = fadd (fmul x.`a' r) x.`b'; |}) rp{1})
+    (fun r => iteri (size rp{2}) (fun i x => fdiv (fsub (nth def_yi r i).`v (nth def_ui rp{2} i).`b) (nth def_ui rp{2} i).`a) fzero).*)
+    (*(fun r => fdiv (fsub (head def_yi r).`v (head def_ui rp{2}).`b) (head def_ui rp{2}).`a).*)
+wp.
+rnd{2}.
 wp.
 (* b' isomorphism *)
       rnd (fun r => fsub r (fsub (fadd (fmul a_final_const{2} (eval_gates gg{1} inst{1} ret{2}.`1.`1)) (fmul (nth def_ui rp0{1} (get_gid gg{1})).`a fone)) fzero)) 
@@ -2435,6 +3099,1244 @@ ringeq.
 ringeq.
 ringeq.
 ringeq.
+
+rewrite /generate_correlated_randomness.
+
+move : H30; rewrite !size_cat //= supp_dprod.
+rewrite supp_dlist.
+smt().
+rewrite allP //=.
+
+
+rewrite !size_cat //=.
+print eq_from_nth.
+rewrite (eq_from_nth def_yi rv0R (map
+  (fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (iteri (size rp0{2} + 2)
+                 (fun (i0 : int) (_ : t) =>
+                    fdiv
+                      (fsub (nth def_yi rv0R i0).`LPZK.v
+                         (nth def_ui
+                            (rp0{2} ++
+                             [{| a = a_final_constL; b =
+                                  fsub b_final_constL fone; a' =
+                                  a'_final_constL; b' = b'_final_constL; |}] ++
+                             [{| a = a_final_mulL; b =
+                                  fsub b_final_mulL
+                                    (eval_gate (get_gid c0{1}.`gates)
+                                       c0{1}.`gates inst{1} ret{2}.`1.`1);
+                                  a' =
+                                  fsub a'_final_mulL
+                                    (fsub
+                                       (fmul a_final_constL
+                                          (nth def_ui
+                                             (rp0{2} ++
+                                              [{| a = a_final_constL; b =
+                                                   fsub b_final_constL fone;
+                                                   a' = a'_final_constL; b' =
+                                                   b'_final_constL; |}])
+                                             (get_gid c0{1}.`gates)).`LPZK.a)
+                                       (fmul a_final_constL
+                                          (nth def_ui
+                                             (rp0{2} ++
+                                              [{| a = a_final_constL; b =
+                                                   fsub b_final_constL fone;
+                                                   a' = a'_final_constL; b' =
+                                                   b'_final_constL; |}])
+                                             (get_gid c0{1}.`gates)).`LPZK.a));
+                                  b' =
+                                  fsub b'_final_mulL
+                                    (fsub
+                                       (fadd
+                                          (fmul a_final_constL
+                                             (eval_gates c0{1}.`gates inst{1}
+                                                ret{2}.`1.`1))
+                                          (fmul
+                                             (nth def_ui
+                                                (rp0{1} ++
+                                                 [{| a = a_final_constL; b =
+                                                      b_final_constL; a' =
+                                                      a'_final_constL; b' =
+                                                      b'_final_constL; |}])
+                                                (get_gid c0{1}.`gates)).`LPZK.a
+                                             fone)) fzero); |}]) i0).`LPZK.b)
+                      (nth def_ui
+                         (rp0{2} ++
+                          [{| a = a_final_constL; b =
+                               fsub b_final_constL fone; a' =
+                               a'_final_constL; b' = b'_final_constL; |}] ++
+                          [{| a = a_final_mulL; b =
+                               fsub b_final_mulL
+                                 (eval_gate (get_gid c0{1}.`gates)
+                                    c0{1}.`gates inst{1} ret{2}.`1.`1); a' =
+                               fsub a'_final_mulL
+                                 (fsub
+                                    (fmul a_final_constL
+                                       (nth def_ui
+                                          (rp0{2} ++
+                                           [{| a = a_final_constL; b =
+                                                fsub b_final_constL fone;
+                                                a' = a'_final_constL; b' =
+                                                b'_final_constL; |}])
+                                          (get_gid c0{1}.`gates)).`LPZK.a)
+                                    (fmul a_final_constL
+                                       (nth def_ui
+                                          (rp0{2} ++
+                                           [{| a = a_final_constL; b =
+                                                fsub b_final_constL fone;
+                                                a' = a'_final_constL; b' =
+                                                b'_final_constL; |}])
+                                          (get_gid c0{1}.`gates)).`LPZK.a));
+                               b' =
+                               fsub b'_final_mulL
+                                 (fsub
+                                    (fadd
+                                       (fmul a_final_constL
+                                          (eval_gates c0{1}.`gates inst{1}
+                                             ret{2}.`1.`1))
+                                       (fmul
+                                          (nth def_ui
+                                             (rp0{1} ++
+                                              [{| a = a_final_constL; b =
+                                                   b_final_constL; a' =
+                                                   a'_final_constL; b' =
+                                                   b'_final_constL; |}])
+                                             (get_gid c0{1}.`gates)).`LPZK.a
+                                          fone)) fzero); |}]) i0).`LPZK.a)
+                 fzero)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (iteri (size rp0{2} + 2)
+                 (fun (i0 : int) (_ : t) =>
+                    fdiv
+                      (fsub (nth def_yi rv0R i0).`LPZK.v
+                         (nth def_ui
+                            (rp0{2} ++
+                             [{| a = a_final_constL; b =
+                                  fsub b_final_constL fone; a' =
+                                  a'_final_constL; b' = b'_final_constL; |}] ++
+                             [{| a = a_final_mulL; b =
+                                  fsub b_final_mulL
+                                    (eval_gate (get_gid c0{1}.`gates)
+                                       c0{1}.`gates inst{1} ret{2}.`1.`1);
+                                  a' =
+                                  fsub a'_final_mulL
+                                    (fsub
+                                       (fmul a_final_constL
+                                          (nth def_ui
+                                             (rp0{2} ++
+                                              [{| a = a_final_constL; b =
+                                                   fsub b_final_constL fone;
+                                                   a' = a'_final_constL; b' =
+                                                   b'_final_constL; |}])
+                                             (get_gid c0{1}.`gates)).`LPZK.a)
+                                       (fmul a_final_constL
+                                          (nth def_ui
+                                             (rp0{2} ++
+                                              [{| a = a_final_constL; b =
+                                                   fsub b_final_constL fone;
+                                                   a' = a'_final_constL; b' =
+                                                   b'_final_constL; |}])
+                                             (get_gid c0{1}.`gates)).`LPZK.a));
+                                  b' =
+                                  fsub b'_final_mulL
+                                    (fsub
+                                       (fadd
+                                          (fmul a_final_constL
+                                             (eval_gates c0{1}.`gates inst{1}
+                                                ret{2}.`1.`1))
+                                          (fmul
+                                             (nth def_ui
+                                                (rp0{1} ++
+                                                 [{| a = a_final_constL; b =
+                                                      b_final_constL; a' =
+                                                      a'_final_constL; b' =
+                                                      b'_final_constL; |}])
+                                                (get_gid c0{1}.`gates)).`LPZK.a
+                                             fone)) fzero); |}]) i0).`LPZK.b)
+                      (nth def_ui
+                         (rp0{2} ++
+                          [{| a = a_final_constL; b =
+                               fsub b_final_constL fone; a' =
+                               a'_final_constL; b' = b'_final_constL; |}] ++
+                          [{| a = a_final_mulL; b =
+                               fsub b_final_mulL
+                                 (eval_gate (get_gid c0{1}.`gates)
+                                    c0{1}.`gates inst{1} ret{2}.`1.`1); a' =
+                               fsub a'_final_mulL
+                                 (fsub
+                                    (fmul a_final_constL
+                                       (nth def_ui
+                                          (rp0{2} ++
+                                           [{| a = a_final_constL; b =
+                                                fsub b_final_constL fone;
+                                                a' = a'_final_constL; b' =
+                                                b'_final_constL; |}])
+                                          (get_gid c0{1}.`gates)).`LPZK.a)
+                                    (fmul a_final_constL
+                                       (nth def_ui
+                                          (rp0{2} ++
+                                           [{| a = a_final_constL; b =
+                                                fsub b_final_constL fone;
+                                                a' = a'_final_constL; b' =
+                                                b'_final_constL; |}])
+                                          (get_gid c0{1}.`gates)).`LPZK.a));
+                               b' =
+                               fsub b'_final_mulL
+                                 (fsub
+                                    (fadd
+                                       (fmul a_final_constL
+                                          (eval_gates c0{1}.`gates inst{1}
+                                             ret{2}.`1.`1))
+                                       (fmul
+                                          (nth def_ui
+                                             (rp0{1} ++
+                                              [{| a = a_final_constL; b =
+                                                   b_final_constL; a' =
+                                                   a'_final_constL; b' =
+                                                   b'_final_constL; |}])
+                                             (get_gid c0{1}.`gates)).`LPZK.a
+                                          fone)) fzero); |}]) i0).`LPZK.a)
+                 fzero)) x1.`LPZK.b'; |})
+  (rp0{1} ++
+   [{| a = a_final_constL; b = b_final_constL; a' = a'_final_constL; b' =
+        b'_final_constL; |}] ++
+   [{| a = a_final_mulL; b = b_final_mulL; a' = a'_final_mulL; b' =
+        b'_final_mulL; |}]))).
+rewrite size_map !size_cat //=.
+move : H30.
+rewrite supp_dlist.
+rewrite !size_cat //=.
+smt().
+rewrite !size_cat //=.
+smt().
+move => k; progress.
+print nth_map.
+rewrite (nth_map witness def_yi _ _).
+rewrite !size_cat //=.
+move : H30.
+rewrite supp_dlist.
+rewrite !size_cat //=.
+smt().
+rewrite !size_cat //=.
+smt().
+simplify.
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+case (k < size rp0{1} + 1); progress.
+case (k < size rp0{1}); progress.
+have ->: get_gid c0{1}.`gates < size rp0{2} <=> true.
+move : H3; rewrite /valid_circuit //=.
+smt tmo=60.
+simplify.
+have ->: get_gid c0{1}.`gates < size rp0{1} <=> true.
+move : H3; rewrite /valid_circuit //=.
+smt tmo=60.
+simplify.
+have ->: (size rp0{2} + 2) = (size rp0{2} + 1 + 1) by smt().
+rewrite !iteriS.
+smt().
+smt().
+simplify.
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+
+
+
+
+
+pose cr := (iteri (size rp0{2} + 2)
+            (fun (i0 : int) (_ : t) =>
+               fdiv
+                 (fsub (nth def_yi rv0R i0).`LPZK.v
+                    (nth def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui rp0{2}
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui rp0{2}
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui rp0{1}
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}]) i0).`LPZK.b)
+                 (nth def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui rp0{2} (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui rp0{2} (get_gid c0{1}.`gates)).`LPZK.a));
+                          b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui rp0{1}
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}]) i0).`LPZK.a) fzero).
+smt tmo=60.
+
+
+
+rewrite !size_cat //=.
+smt().
+
+
+
+
+
+rewrite !nth_cat.
+
+
+have ->: (fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.b)
+                 (head def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)); b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui
+                                        (rp0{1} ++
+                                         [{| a = a_final_constL; b =
+                                              b_final_constL; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}])).`LPZK.a)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.b)
+                 (head def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)); b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui
+                                        (rp0{1} ++
+                                         [{| a = a_final_constL; b =
+                                              b_final_constL; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}])).`LPZK.a)) x1.`LPZK.b'; |}) = 
+(fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2})).`LPZK.b)
+                 (head def_ui
+                    (rp0{2})).`LPZK.a)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2})).`LPZK.b)
+                 (head def_ui
+                    (rp0{2})).`LPZK.a)) x1.`LPZK.b'; |}).
+rewrite fun_ext /(==); progress.
+rewrite !head_cat.
+smt(@List).
+smt(@List).
+done.
+rewrite !head_cat.
+smt(@List).
+smt(@List).
+done.
+print eq_from_nth.
+rewrite (eq_from_nth def_yi rv0R (map
+  (fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui rp0{2}).`LPZK.b)
+                 (head def_ui rp0{2}).`LPZK.a)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui rp0{2}).`LPZK.b)
+                 (head def_ui rp0{2}).`LPZK.a)) x1.`LPZK.b'; |})
+  (rp0{1} ++
+   [{| a = a_final_constL; b = b_final_constL; a' = a'_final_constL; b' =
+        b'_final_constL; |}] ++
+   [{| a = a_final_mulL; b = b_final_mulL; a' = a'_final_mulL; b' =
+        b'_final_mulL; |}]))).
+rewrite size_map !size_cat //=.
+move : H30.
+rewrite supp_dlist.
+rewrite !size_cat //=.
+smt().
+rewrite !size_cat //=.
+smt().
+move => k; progress.
+print nth_map.
+rewrite (nth_map witness def_yi _ _ _).
+rewrite !size_cat //=.
+move : H30.
+rewrite supp_dlist.
+rewrite !size_cat //=.
+smt().
+rewrite !size_cat //=.
+smt().
+simplify.
+rewrite !nth_cat //=.
+rewrite !size_cat //=.
+case (k < size rp0{1} + 1); progress.
+case (k < size rp0{1}); progress.
+
+move : H30.
+rewrite supp_dlist.
+rewrite !size_cat //=.
+smt().
+rewrite !size_cat //=.
+rewrite allP //=.
+progress.
+move : (H35 (head def_yi rv0R)).
+have ->: head def_yi rv0R \in rv0R.
+smt(@List).
+progress.
+move : (H35 (nth def_yi rv0R k)).
+have ->: nth def_yi rv0R k \in rv0R.
+smt(@List).
+progress.
+have ->: (fdiv (fsub (head def_yi rv0R).`LPZK.v (head def_ui rp0{2}).`LPZK.b)
+            (head def_ui rp0{2}).`LPZK.a) = 
+(fdiv (fsub (nth def_yi rv0R k).`LPZK.v (nth def_ui rp0{2} k).`LPZK.b)
+            (nth def_ui rp0{2} k).`LPZK.a).
+move : H36 H37.
+rewrite /dcorrelated //=.
+rewrite !supp_dmap //=.
+progress.
+rewrite H37 H39 //=.
+
+
+smt(@PrimeField @Distr). tmo = 120.
+
+
+
+
+
+(rp[k].a * ((rv[0].v - rp'[0].b) / rp'[0].a)) + rp[k].b
+
+
+have ->: fadd
+      (fmul (nth witness rp0{1} k).`LPZK.a
+         (fdiv (fsub (head def_yi rv0R).`LPZK.v (head def_ui rp0{2}).`LPZK.b)
+            (head def_ui rp0{2}).`LPZK.a)) (nth witness rp0{1} k).`LPZK.b = 
+
+
+
+have ->: rv0R = map (fun x => x) rv0R.
+smt(@List).
+search (map _ _ = map _ _).
+rewrite (in_inj_map ).
+
+rewrite (eq_in_map (fun (x1 : yi_t) => x1) (fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (fdiv
+                 (fsub
+                    (head def_yi (map (fun (x2 : yi_t) => x2) rv0R)).`LPZK.v
+                    (head def_ui rp0{2}).`LPZK.b)
+                 (head def_ui rp0{2}).`LPZK.a)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (fdiv
+                 (fsub
+                    (head def_yi (map (fun (x2 : yi_t) => x2) rv0R)).`LPZK.v
+                    (head def_ui rp0{2}).`LPZK.b)
+                 (head def_ui rp0{2}).`LPZK.a)) x1.`LPZK.b'; |}) _).
+
+print map_in_eq.
+
+smt(@List).
+
+move : H30.
+rewrite !size_cat //=.
+progress.
+have : rv0R \in dlist dcorrelated (size rp0{2} + 2) by smt().
+rewrite supp_dlist.
+smt(). 
+rewrite allP.
+progress.
+
+admit.
+
+smt(@Distr @DList @List).
+
+
+pose f := (fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.b)
+                 (head def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)); b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui
+                                        (rp0{1} ++
+                                         [{| a = a_final_constL; b =
+                                              b_final_constL; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}])).`LPZK.a)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.b)
+                 (head def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)); b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui
+                                        (rp0{1} ++
+                                         [{| a = a_final_constL; b =
+                                              b_final_constL; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}])).`LPZK.a)) x1.`LPZK.b'; |}).
+
+
+
+admit.
+admit.
+admit.
+admit.
+
+(*print eq_from_nth.
+rewrite (eq_from_nth def_yi rv0R (map
+  (fun (x1 : ui_t) =>
+     {| v =
+         fadd
+           (fmul x1.`LPZK.a
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.b)
+                 (head def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)); b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui
+                                        (rp0{1} ++
+                                         [{| a = a_final_constL; b =
+                                              b_final_constL; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}])).`LPZK.a)) x1.`LPZK.b; v' =
+         fadd
+           (fmul x1.`LPZK.a'
+              (fdiv
+                 (fsub (head def_yi rv0R).`LPZK.v
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.b)
+                 (head def_ui
+                    (rp0{2} ++
+                     [{| a = a_final_constL; b = fsub b_final_constL fone;
+                          a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                     [{| a = a_final_mulL; b =
+                          fsub b_final_mulL
+                            (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                               inst{1} ret{2}.`1.`1); a' =
+                          fsub a'_final_mulL
+                            (fsub
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)
+                               (fmul a_final_constL
+                                  (nth def_ui
+                                     (rp0{2} ++
+                                      [{| a = a_final_constL; b =
+                                           fsub b_final_constL fone; a' =
+                                           a'_final_constL; b' =
+                                           b'_final_constL; |}])
+                                     (get_gid c0{1}.`gates)).`LPZK.a)); b' =
+                          fsub b'_final_mulL
+                            (fsub
+                               (fadd
+                                  (fmul a_final_constL
+                                     (eval_gates c0{1}.`gates inst{1}
+                                        ret{2}.`1.`1))
+                                  (fmul
+                                     (nth def_ui
+                                        (rp0{1} ++
+                                         [{| a = a_final_constL; b =
+                                              b_final_constL; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a fone))
+                               fzero); |}])).`LPZK.a)) x1.`LPZK.b'; |})
+  (rp0{1} ++
+   [{| a = a_final_constL; b = b_final_constL; a' = a'_final_constL; b' =
+        b'_final_constL; |}] ++
+   [{| a = a_final_mulL; b = b_final_mulL; a' = a'_final_mulL; b' =
+        b'_final_mulL; |}]))).
+move : H30.
+rewrite !size_cat //= !size_map //= !size_cat //=.
+progress.
+smt(@DList).
+progress.
+have : size rv0R = (size rp0{2} + 2).
+move : H30.
+rewrite !size_cat //= //=.
+progress.
+smt(@DList).
+progress.
+print nth_map.
+rewrite (nth_map def_ui def_yi (fun (x1 : ui_t) =>
+        {| v =
+            fadd
+              (fmul x1.`LPZK.a
+                 (fdiv
+                    (fsub (head def_yi rv0R).`LPZK.v
+                       (head def_ui
+                          (rp0{2} ++
+                           [{| a = a_final_constL; b =
+                                fsub b_final_constL fone; a' =
+                                a'_final_constL; b' = b'_final_constL; |}] ++
+                           [{| a = a_final_mulL; b =
+                                fsub b_final_mulL
+                                  (eval_gate (get_gid c0{1}.`gates)
+                                     c0{1}.`gates inst{1} ret{2}.`1.`1); a' =
+                                fsub a'_final_mulL
+                                  (fsub
+                                     (fmul a_final_constL
+                                        (nth def_ui
+                                           (rp0{2} ++
+                                            [{| a = a_final_constL; b =
+                                                 fsub b_final_constL fone;
+                                                 a' = a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a)
+                                     (fmul a_final_constL
+                                        (nth def_ui
+                                           (rp0{2} ++
+                                            [{| a = a_final_constL; b =
+                                                 fsub b_final_constL fone;
+                                                 a' = a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a));
+                                b' =
+                                fsub b'_final_mulL
+                                  (fsub
+                                     (fadd
+                                        (fmul a_final_constL
+                                           (eval_gates c0{1}.`gates inst{1}
+                                              ret{2}.`1.`1))
+                                        (fmul
+                                           (nth def_ui
+                                              (rp0{1} ++
+                                               [{| a = a_final_constL; b =
+                                                    b_final_constL; a' =
+                                                    a'_final_constL; b' =
+                                                    b'_final_constL; |}])
+                                              (get_gid c0{1}.`gates)).`LPZK.a
+                                           fone)) fzero); |}])).`LPZK.b)
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.a))
+              x1.`LPZK.b; v' =
+            fadd
+              (fmul x1.`LPZK.a'
+                 (fdiv
+                    (fsub (head def_yi rv0R).`LPZK.v
+                       (head def_ui
+                          (rp0{2} ++
+                           [{| a = a_final_constL; b =
+                                fsub b_final_constL fone; a' =
+                                a'_final_constL; b' = b'_final_constL; |}] ++
+                           [{| a = a_final_mulL; b =
+                                fsub b_final_mulL
+                                  (eval_gate (get_gid c0{1}.`gates)
+                                     c0{1}.`gates inst{1} ret{2}.`1.`1); a' =
+                                fsub a'_final_mulL
+                                  (fsub
+                                     (fmul a_final_constL
+                                        (nth def_ui
+                                           (rp0{2} ++
+                                            [{| a = a_final_constL; b =
+                                                 fsub b_final_constL fone;
+                                                 a' = a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a)
+                                     (fmul a_final_constL
+                                        (nth def_ui
+                                           (rp0{2} ++
+                                            [{| a = a_final_constL; b =
+                                                 fsub b_final_constL fone;
+                                                 a' = a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a));
+                                b' =
+                                fsub b'_final_mulL
+                                  (fsub
+                                     (fadd
+                                        (fmul a_final_constL
+                                           (eval_gates c0{1}.`gates inst{1}
+                                              ret{2}.`1.`1))
+                                        (fmul
+                                           (nth def_ui
+                                              (rp0{1} ++
+                                               [{| a = a_final_constL; b =
+                                                    b_final_constL; a' =
+                                                    a'_final_constL; b' =
+                                                    b'_final_constL; |}])
+                                              (get_gid c0{1}.`gates)).`LPZK.a
+                                           fone)) fzero); |}])).`LPZK.b)
+                    (head def_ui
+                       (rp0{2} ++
+                        [{| a = a_final_constL; b = fsub b_final_constL fone;
+                             a' = a'_final_constL; b' = b'_final_constL; |}] ++
+                        [{| a = a_final_mulL; b =
+                             fsub b_final_mulL
+                               (eval_gate (get_gid c0{1}.`gates) c0{1}.`gates
+                                  inst{1} ret{2}.`1.`1); a' =
+                             fsub a'_final_mulL
+                               (fsub
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a)
+                                  (fmul a_final_constL
+                                     (nth def_ui
+                                        (rp0{2} ++
+                                         [{| a = a_final_constL; b =
+                                              fsub b_final_constL fone; a' =
+                                              a'_final_constL; b' =
+                                              b'_final_constL; |}])
+                                        (get_gid c0{1}.`gates)).`LPZK.a));
+                             b' =
+                             fsub b'_final_mulL
+                               (fsub
+                                  (fadd
+                                     (fmul a_final_constL
+                                        (eval_gates c0{1}.`gates inst{1}
+                                           ret{2}.`1.`1))
+                                     (fmul
+                                        (nth def_ui
+                                           (rp0{1} ++
+                                            [{| a = a_final_constL; b =
+                                                 b_final_constL; a' =
+                                                 a'_final_constL; b' =
+                                                 b'_final_constL; |}])
+                                           (get_gid c0{1}.`gates)).`LPZK.a
+                                        fone)) fzero); |}])).`LPZK.a))
+              x1.`LPZK.b'; |})).
+rewrite !size_cat //=.
+smt().
+simplify.
+rewrite !nth_cat //= !size_cat //=.
+case (i0 < size rp0{1} + 1); progress.
+case (i0 < size rp0{1}); progress.
+
+rewrite head_cat.
+smt(@List).
+rewrite head_cat.
+smt(@List).
+move : H30.
+rewrite !size_cat //=.
+progress.
+smt(@List @DList).
+
+smt.
+
+have ->: i0 < size rp0{1} + 1 <=> true.
+by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+
+
+
+smt(@DList).
+
+
+rewrite -(supp_dlist_size _ _ dcorrelated).*)
+
+
 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 rewrite /commit //=.
 move : H H0 H1 H2 H7 H10.
@@ -2494,31 +4396,31 @@ simplify.
 have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
                c0{2}.`Circuit.topo.`ngates - size rp0{1} = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
 simplify.
-have ->: get_gid c0{2}.`gates < size rp0{1} + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+have ->: get_gid c0{2}.`gates < size rp0{1} + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
-have ->: get_gid c0{2}.`gates < size rp0{1} by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
-simplify.
-have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
-         c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{1} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+have ->: get_gid c0{2}.`gates < size rp0{1} by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
 have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
-      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{2} + 1 <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+         c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{1} + 1) = 0 by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
 have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
-               c0{2}.`Circuit.topo.`ngates < size rp0{2} + 1 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+      c0{2}.`Circuit.topo.`ngates + 1 < size rp0{2} + 1 <=> false by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
 have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
-               c0{2}.`Circuit.topo.`ngates < size rp0{2} <=> false by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+               c0{2}.`Circuit.topo.`ngates < size rp0{2} + 1 <=> true by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
 have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
-               c0{2}.`Circuit.topo.`ngates - size rp0{2} = 0 <=> true by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
-simplify.
-have ->: get_gid c0{2}.`gates < size rp0{2} + 1 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
-simplify.
-have ->: get_gid c0{2}.`gates < size rp0{2} by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+               c0{2}.`Circuit.topo.`ngates < size rp0{2} <=> false by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
 have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
-         c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{2} + 1) = 0 by move : H2; rewrite /valid_inputs //= /valid_circuit //= //=; smt().
+               c0{2}.`Circuit.topo.`ngates - size rp0{2} = 0 <=> true by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: get_gid c0{2}.`gates < size rp0{2} + 1 by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: get_gid c0{2}.`gates < size rp0{2} by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
+simplify.
+have ->: c0{2}.`Circuit.topo.`npinputs + c0{2}.`Circuit.topo.`nsinputs +
+         c0{2}.`Circuit.topo.`ngates + 1 - (size rp0{2} + 1) = 0 by move : H3; rewrite /valid_inputs //= /valid_circuit //= //=; smt.
 simplify.
 ringeq.
 
